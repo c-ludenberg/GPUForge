@@ -122,13 +122,19 @@ class MiniGraph(QFrame):
         self._plot.getAxis("bottom").setStyle(showValues=False)
         self._plot.setMenuEnabled(False)
 
-        fill = pg.mkBrush(color + "33") if color.startswith("#") else pg.mkBrush(0, 100, 200, 50)
-        pen = pg.mkPen(color=color, width=2)
-        self._curve = self._plot.plot([], [], pen=pen, fillLevel=0, brush=fill)
+        self._brush = pg.mkBrush(color + "33") if color.startswith("#") else pg.mkBrush(0, 100, 200, 50)
+        self._pen = pg.mkPen(color=color, width=2)
+        self._curve = self._plot.plot([], [], pen=self._pen, fillLevel=None, brush=self._brush)
         layout.addWidget(self._plot)
 
     def update_data(self, data: list):
         self._curve.setData(data)
+        if len(data) > 1:
+            mn = min(data)
+            mx = max(data)
+            margin = (mx - mn) * 0.15 if mx > mn else 5.0
+            self._curve.opts['fillLevel'] = mn - margin
+            self._plot.plotItem.vb.setRange(yRange=[mn - margin, mx + margin], padding=0)
 
 
 class MonitorWidget(QWidget):

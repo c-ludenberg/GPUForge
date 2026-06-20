@@ -3,9 +3,9 @@ import logging
 import numpy as np
 
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
-from PySide6.QtWidgets import QMainWindow, QApplication
+from PySide6.QtWidgets import QMainWindow, QApplication, QLabel, QVBoxLayout, QWidget
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QFont, QPainter, QColor
+from PySide6.QtGui import QFont, QPainter, QColor, QPalette
 
 from gettext import gettext as _
 
@@ -16,7 +16,7 @@ try:
     HAS_OPENGL = True
 except ImportError:
     HAS_OPENGL = False
-    log.warning("PyOpenGL not installed — stress test will use software fallback")
+    log.warning("PyOpenGL not installed")
 
 
 QUALITY_CONFIGS = {
@@ -166,28 +166,21 @@ def _gen_torus(major, minor):
         for j in range(minor + 1):
             phi = 2.0 * math.pi * j / minor
             cp, sp = math.cos(phi), math.sin(phi)
-            r = 0.35
-            R = 0.8
-            x = (R + r * cp) * ct
-            y = r * sp
-            z = (R + r * cp) * st
-            verts.extend([x, y, z])
-            nx = cp * ct
-            ny = sp
-            nz = cp * st
-            norms.extend([nx, ny, nz])
-            uvs.extend([i / major, j / minor])
+            r, R = 0.35, 0.8
+            verts += [R * ct + r * cp * ct, r * sp, R * st + r * cp * st]
+            norms += [cp * ct, sp, cp * st]
+            uvs += [i / major, j / minor]
     for i in range(major):
         for j in range(minor):
             a = i * (minor + 1) + j
             b = a + minor + 1
-            idxs.extend([a, b, a + 1, b, b + 1, a + 1])
+            idxs += [a, b, a + 1, b, b + 1, a + 1]
     return verts, norms, uvs, idxs
 
 
 def _gen_noise_tex(size):
     noise = np.random.rand(size, size).astype(np.float32)
-    GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RED, size, size, 0,
+    GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_R8, size, size, 0,
                     GL.GL_RED, GL.GL_FLOAT, noise.tobytes())
 
 
@@ -208,16 +201,10 @@ def _look_at(eye, center, up):
     up = np.array(up, dtype=np.float32)
     f = center - eye
     fn = np.linalg.norm(f)
-    if fn < 1e-8:
-        f = np.array([0.0, 0.0, -1.0], dtype=np.float32)
-    else:
-        f /= fn
+    f = f / fn if fn > 1e-8 else np.array([0.0, 0.0, -1.0], dtype=np.float32)
     s = np.cross(f, up)
     sn = np.linalg.norm(s)
-    if sn < 1e-8:
-        s = np.array([1.0, 0.0, 0.0], dtype=np.float32)
-    else:
-        s /= sn
+    s = s / sn if sn > 1e-8 else np.array([1.0, 0.0, 0.0], dtype=np.float32)
     u = np.cross(s, f)
     return np.array([
         [s[0], s[1], s[2], -np.dot(s, eye)],
@@ -229,22 +216,12 @@ def _look_at(eye, center, up):
 
 def _rotate_y(angle):
     c, s = math.cos(angle), math.sin(angle)
-    return np.array([
-        [c, 0, s, 0],
-        [0, 1, 0, 0],
-        [-s, 0, c, 0],
-        [0, 0, 0, 1],
-    ], dtype=np.float32)
+    return np.array([[c, 0, s, 0], [0, 1, 0, 0], [-s, 0, c, 0], [0, 0, 0, 1]], dtype=np.float32)
 
 
 def _rotate_x(angle):
     c, s = math.cos(angle), math.sin(angle)
-    return np.array([
-        [1, 0, 0, 0],
-        [0, c, -s, 0],
-        [0, s, c, 0],
-        [0, 0, 0, 1],
-    ], dtype=np.float32)
+    return np.array([[1, 0, 0, 0], [0, c, -s, 0], [0, s, c, 0], [0, 0, 0, 1]], dtype=np.float32)
 
 
 class GLStressWidget(QOpenGLWidget):
@@ -259,67 +236,28 @@ class GLStressWidget(QOpenGLWidget):
         self._frame_count = 0
         self._fps = 0.0
         self._fps_timer = 0.0
-
         self._gpu_temp = 0.0
         self._gpu_name = ""
         self._gpu_load = 0.0
         self._backend = None
 
-        self._vao = self._vbo = self._ebo = None
+        self._vao = self._vbo = self._ebo = 0
         self._index_count = 0
-        self._fur_prog = self._base_prog = None
-        self._noise_tex = None
+        self._fur_prog = self._base_prog = 0
+        self._noise_tex = 0
         self._initialized = False
-
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._tick)
-        self._timer.setTimerType(Qt.PreciseTimer)
 
     def set_monitoring(self, backend, gpu_name):
         self._backend = backend
-        self._gpu_name = gpu_name
-        if not gpu_name:
-            import platform
-            self._gpu_name = platform.node()
-
-    @property
-    def fps(self):
-        return self._fps
-
-    def start(self):
-        self._timer.start(16)
-
-    def stop(self):
-        self._timer.stop()
-
-    def _tick(self):
-        dt = 1.0 / 60.0
-        self._time += dt
-        self._frame_count += 1
-        self._fps_timer += dt
-        if self._fps_timer >= 1.0:
-            self._fps = self._frame_count / self._fps_timer
-            self._frame_count = 0
-            self._fps_timer = 0.0
-        if self._backend:
-            try:
-                s = self._backend.get_sensors(0)
-                self._gpu_temp = s.temp_core
-                self._gpu_load = s.utilization_pct
-            except Exception:
-                pass
-        self.update()
+        self._gpu_name = gpu_name or "GPU"
 
     def initializeGL(self):
         if not HAS_OPENGL:
-            self._initialized = False
             return
-
         try:
             self._do_init()
         except Exception as e:
-            log.error("OpenGL init failed: %s", e, exc_info=True)
-            self._initialized = False
+            log.error("GL init failed: %s", e, exc_info=True)
 
     def _do_init(self):
         GL.glEnable(GL.GL_DEPTH_TEST)
@@ -329,8 +267,8 @@ class GLStressWidget(QOpenGLWidget):
 
         verts, norms, uvs, idxs = _gen_torus(self._cfg["major"], self._cfg["minor"])
         self._index_count = len(idxs)
-
         n_verts = len(verts) // 3
+
         stride = 8
         data = np.empty(n_verts * stride, dtype=np.float32)
         for i in range(n_verts):
@@ -350,11 +288,11 @@ class GLStressWidget(QOpenGLWidget):
 
         self._vbo = GL.glGenBuffers(1)
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self._vbo)
-        GL.glBufferData(GL.GL_ARRAY_BUFFER, data.nbytes, data.tobytes(), GL.GL_STATIC_DRAW)
+        GL.glBufferData(GL.GL_ARRAY_BUFFER, data.nbytes, data, GL.GL_STATIC_DRAW)
 
         self._ebo = GL.glGenBuffers(1)
         GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self._ebo)
-        GL.glBufferData(GL.GL_ELEMENT_ARRAY_BUFFER, idx_arr.nbytes, idx_arr.tobytes(), GL.GL_STATIC_DRAW)
+        GL.glBufferData(GL.GL_ELEMENT_ARRAY_BUFFER, idx_arr.nbytes, idx_arr, GL.GL_STATIC_DRAW)
 
         stride_bytes = stride * 4
         GL.glVertexAttribPointer(0, 3, GL.GL_FLOAT, GL.GL_FALSE, stride_bytes, GL.ctypes.c_void_p(0))
@@ -376,128 +314,86 @@ class GLStressWidget(QOpenGLWidget):
         _gen_noise_tex(self._cfg["tex_size"])
 
         self._initialized = True
-        log.info("GL stress widget initialized (%s, %dx%d, %d shells)",
-                 self._quality_label, self._cfg["major"], self._cfg["minor"],
-                 self._cfg["shells"])
+        log.info("GL stress init OK (%s, %d shells)", self._quality_label, self._cfg["shells"])
 
     def paintGL(self):
         if not self._initialized:
-            self._draw_fallback()
             return
-
         try:
-            self._do_render()
-        except Exception as e:
-            log.error("Render error: %s", e, exc_info=True)
-            self._draw_fallback()
+            w = max(self.width(), 1)
+            h = max(self.height(), 1)
+            aspect = w / h
 
-    def _do_render(self):
-        w = self.width() * self.devicePixelRatio()
-        h = self.height() * self.devicePixelRatio()
-        aspect = w / h
+            GL.glViewport(0, 0, int(w * self.devicePixelRatio()), int(h * self.devicePixelRatio()))
+            GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
 
-        GL.glViewport(0, 0, int(w), int(h))
-        GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
+            rot = self._time * 0.35
+            mvp = _perspective(50.0, aspect, 0.1, 10.0) @ _look_at([2.4, 1.5, 3.0], [0, 0, 0], [0, 1, 0]) @ _rotate_y(rot) @ _rotate_x(rot * 0.12)
+            mvp_f = mvp.flatten()
+            light = np.array([0.6, 0.85, 0.7], dtype=np.float32)
+            color = np.array([0.82, 0.52, 0.18], dtype=np.float32)
+            shells = self._cfg["shells"]
 
-        rot = self._time * 0.35
-        proj = _perspective(50.0, aspect, 0.1, 10.0)
-        view = _look_at([2.4, 1.5, 3.0], [0, 0, 0], [0, 1, 0])
-        model = _rotate_y(rot) @ _rotate_x(rot * 0.12)
-        mvp = proj @ view @ model
-        mvp_f = mvp.flatten()
+            GL.glUseProgram(self._fur_prog)
+            GL.glUniformMatrix4fv(GL.glGetUniformLocation(self._fur_prog, "u_mvp"), 1, GL.GL_FALSE, mvp_f)
+            GL.glUniform3fv(GL.glGetUniformLocation(self._fur_prog, "u_color"), 1, color)
+            GL.glUniform3fv(GL.glGetUniformLocation(self._fur_prog, "u_light"), 1, light)
+            GL.glUniform1f(GL.glGetUniformLocation(self._fur_prog, "u_shells"), float(shells))
+            GL.glUniform1f(GL.glGetUniformLocation(self._fur_prog, "u_fur_len"), self._cfg["fur_len"])
 
-        light = np.array([0.6, 0.85, 0.7], dtype=np.float32)
-        color = np.array([0.82, 0.52, 0.18], dtype=np.float32)
-        shells = self._cfg["shells"]
-        fur_len = self._cfg["fur_len"]
+            GL.glActiveTexture(GL.GL_TEXTURE0)
+            GL.glBindTexture(GL.GL_TEXTURE_2D, self._noise_tex)
+            GL.glUniform1i(GL.glGetUniformLocation(self._fur_prog, "u_noise"), 0)
 
-        GL.glUseProgram(self._fur_prog)
-        GL.glUniformMatrix4fv(GL.glGetUniformLocation(self._fur_prog, "u_mvp"), 1, GL.GL_FALSE, mvp_f)
-        GL.glUniform3fv(GL.glGetUniformLocation(self._fur_prog, "u_color"), 1, color)
-        GL.glUniform3fv(GL.glGetUniformLocation(self._fur_prog, "u_light"), 1, light)
-        GL.glUniform1f(GL.glGetUniformLocation(self._fur_prog, "u_shells"), float(shells))
-        GL.glUniform1f(GL.glGetUniformLocation(self._fur_prog, "u_fur_len"), fur_len)
+            GL.glBindVertexArray(self._vao)
+            GL.glEnable(GL.GL_BLEND)
+            GL.glDepthMask(GL.GL_FALSE)
+            for shell in range(shells):
+                GL.glUniform1f(GL.glGetUniformLocation(self._fur_prog, "u_shell"), float(shell))
+                GL.glDrawElements(GL.GL_TRIANGLES, self._index_count, GL.GL_UNSIGNED_INT, None)
 
-        GL.glActiveTexture(GL.GL_TEXTURE0)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, self._noise_tex)
-        GL.glUniform1i(GL.glGetUniformLocation(self._fur_prog, "u_noise"), 0)
+            GL.glDepthMask(GL.GL_TRUE)
+            GL.glDisable(GL.GL_BLEND)
 
-        GL.glBindVertexArray(self._vao)
-        GL.glEnable(GL.GL_BLEND)
-        GL.glDepthMask(GL.GL_FALSE)
-
-        for shell in range(shells):
-            GL.glUniform1f(GL.glGetUniformLocation(self._fur_prog, "u_shell"), float(shell))
+            GL.glUseProgram(self._base_prog)
+            GL.glUniformMatrix4fv(GL.glGetUniformLocation(self._base_prog, "u_mvp"), 1, GL.GL_FALSE, mvp_f)
+            GL.glUniform3fv(GL.glGetUniformLocation(self._base_prog, "u_color"), 1, color * 0.65)
+            GL.glUniform3fv(GL.glGetUniformLocation(self._base_prog, "u_light"), 1, light)
             GL.glDrawElements(GL.GL_TRIANGLES, self._index_count, GL.GL_UNSIGNED_INT, None)
 
-        GL.glDepthMask(GL.GL_TRUE)
-        GL.glDisable(GL.GL_BLEND)
-
-        GL.glUseProgram(self._base_prog)
-        GL.glUniformMatrix4fv(GL.glGetUniformLocation(self._base_prog, "u_mvp"), 1, GL.GL_FALSE, mvp_f)
-        GL.glUniform3fv(GL.glGetUniformLocation(self._base_prog, "u_color"), 1, color * 0.65)
-        GL.glUniform3fv(GL.glGetUniformLocation(self._base_prog, "u_light"), 1, light)
-        GL.glDrawElements(GL.GL_TRIANGLES, self._index_count, GL.GL_UNSIGNED_INT, None)
-
-        self._draw_overlay(int(w), int(h))
-
-    def _draw_overlay(self, vp_w, vp_h):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.TextAntialiasing)
-
-        scale = self.devicePixelRatio()
-        w = vp_w / scale
-        h = vp_h / scale
-
-        font_specs = QFont("Consolas, monospace", 13)
-        font_specs.setStyleHint(QFont.Monospace)
-        painter.setFont(font_specs)
-        painter.setPen(QColor(180, 220, 255, 230))
-
-        stats = [
-            f"GPU: {self._gpu_name}",
-            f"Temp: {self._gpu_temp:.0f}°C   Load: {self._gpu_load:.0f}%",
-            f"FPS: {self._fps:.1f}",
-            f"Shells: {self._cfg['shells']}  Quality: {self._quality_label}",
-        ]
-        x = 16
-        y = h - 16
-        for line in reversed(stats):
-            rect = painter.fontMetrics().boundingRect(line)
-            y -= rect.height() + 4
-            painter.fillRect(x - 4, y, rect.width() + 8, rect.height() + 4,
-                             QColor(0, 0, 0, 140))
-            painter.drawText(x, y + rect.height() - 2, line)
-
-        info_line = f"{self._res_w}x{self._res_h}  |  Press ESC to exit"
-        painter.setPen(QColor(255, 255, 255, 200))
-        font_info = QFont("Consolas, monospace", 12)
-        painter.setFont(font_info)
-        ir = painter.fontMetrics().boundingRect(info_line)
-        ix = w - ir.width() - 16
-        iy = h - 20
-        painter.fillRect(ix - 4, iy - ir.height() - 4, ir.width() + 8, ir.height() + 8,
-                         QColor(0, 0, 0, 140))
-        painter.drawText(ix, iy - 2, info_line)
-
-        painter.end()
-
-    def _draw_fallback(self):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.fillRect(self.rect(), QColor(10, 10, 16))
-        painter.setPen(QColor(200, 200, 200, 200))
-        font = QFont("Consolas, monospace", 16)
-        painter.setFont(font)
-        msg = _("Stress Test Render\n\nGPU Temp: {:.0f}°C\nLoad: {:.0f}%").format(
-            self._gpu_temp, self._gpu_load)
-        painter.drawText(self.rect(), Qt.AlignCenter, msg)
-        painter.end()
+        except Exception as e:
+            log.error("GL render error: %s", e, exc_info=True)
 
     def resizeGL(self, w, h):
         if HAS_OPENGL:
-            GL.glViewport(0, 0, int(w * self.devicePixelRatio()),
-                          int(h * self.devicePixelRatio()))
+            GL.glViewport(0, 0, int(w * self.devicePixelRatio()), int(h * self.devicePixelRatio()))
+
+
+class Overlay(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setStyleSheet("background: transparent;")
+        self._lines = []
+
+    def set_lines(self, lines):
+        self._lines = lines
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+        font = QFont("Consolas, monospace", 13)
+        font.setStyleHint(QFont.Monospace)
+        painter.setFont(font)
+        painter.setPen(QColor(180, 220, 255, 230))
+
+        y = self.height() - 16
+        for line in reversed(self._lines):
+            rect = painter.fontMetrics().boundingRect(line)
+            y -= rect.height() + 4
+            painter.fillRect(8, y, rect.width() + 8, rect.height() + 4, QColor(0, 0, 0, 140))
+            painter.drawText(10, y + rect.height() - 2, line)
 
 
 class GLStressWindow(QMainWindow):
@@ -513,13 +409,38 @@ class GLStressWindow(QMainWindow):
         self._gl.set_monitoring(backend, gpu_name)
         self.setCentralWidget(self._gl)
 
+        self._overlay = Overlay(self._gl)
+        self._overlay.resize(self._gl.size())
+
+        self._res_w = res_w
+        self._res_h = res_h
+        self._quality_label = quality
+        self._fps = 0.0
+
         screen = QApplication.primaryScreen()
         geo = screen.geometry()
         self.resize(geo.width(), geo.height())
         self.move(geo.x(), geo.y())
         self.showFullScreen()
+        self._overlay.resize(self._gl.size())
 
         self._gl.start()
+
+        self._info_timer = QTimer(self)
+        self._info_timer.timeout.connect(self._update_overlay)
+        self._info_timer.start(250)
+
+    def _update_overlay(self):
+        lines = [
+            f"GPU: {self._gl._gpu_name}",
+            f"Temp: {self._gl._gpu_temp:.0f}°C  Load: {self._gl._gpu_load:.0f}%",
+            f"FPS: {self._gl._fps:.1f}",
+            f"Shells: {self._gl._cfg['shells']}  Quality: {self._quality_label}",
+            f"{self._res_w}x{self._res_h}  |  ESC to exit",
+        ]
+        self._overlay.set_lines(lines)
+        self._overlay.resize(self._gl.size())
+        self._fps = self._gl._fps
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
@@ -527,9 +448,10 @@ class GLStressWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._gl.stop()
+        self._info_timer.stop()
         self.closed.emit()
         super().closeEvent(event)
 
     @property
     def fps(self):
-        return self._gl.fps
+        return self._fps
