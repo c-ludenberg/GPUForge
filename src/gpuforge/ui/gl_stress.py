@@ -147,7 +147,7 @@ def _torus(major, minor):
         for j in range(minor + 1):
             p = 2.0 * math.pi * j / minor
             cp, sp = math.cos(p), math.sin(p)
-            r, R = 0.30, 0.75
+            r, R = 0.25, 0.80
             v += [(R + r*cp)*ct, r*sp, (R + r*cp)*st]
             n += [cp*ct, sp, cp*st]
             u += [i/major, j/minor]
@@ -253,6 +253,7 @@ class GLStressWidget(QOpenGLWidget):
             return
         try:
             GL.glEnable(GL.GL_DEPTH_TEST)
+            GL.glDisable(GL.GL_CULL_FACE)
             GL.glEnable(GL.GL_BLEND)
             GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
             GL.glClearColor(0.03, 0.03, 0.05, 1.0)
@@ -313,7 +314,7 @@ class GLStressWidget(QOpenGLWidget):
 
             aspect = w / h
             rot = self._time * 0.4
-            mvp = _persp(45, aspect, 0.1, 10) @ _look([2.5, 1.2, 2.5], [0, 0, 0], [0, 1, 0]) @ _ry(rot) @ _rx(rot * 0.1)
+            mvp = _persp(45, aspect, 0.1, 10) @ _look([4.0, 2.5, 4.0], [0, 0, 0], [0, 1, 0]) @ _ry(rot) @ _rx(rot * 0.08)
             mvp_f = mvp.flatten()
             light = np.array([0.5, 0.7, 0.6], dtype=np.float32)
             base_col = np.array([0.78, 0.48, 0.12], dtype=np.float32)
