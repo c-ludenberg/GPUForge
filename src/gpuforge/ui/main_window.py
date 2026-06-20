@@ -9,7 +9,6 @@ from PySide6.QtGui import QFont, QIcon
 from gettext import gettext as _
 
 from gpuforge.backend.gpu_base import GPUBackend
-from gpuforge.backend.monitor import MonitorController
 from gpuforge.ui.monitor_widget import MonitorWidget
 from gpuforge.ui.curve_editor import CurveEditorWidget
 from gpuforge.ui.presets import PresetsWidget
@@ -24,7 +23,6 @@ class MainWindow(QMainWindow):
         self._current_lang = current_lang
         self._available_languages = available_languages or {"pl": "Polski", "en": "English"}
         self._on_language_change = on_language_change
-        self._monitor = MonitorController(backend)
         self._gpu_count = max(backend.get_gpu_count(), 1)
         self._current_gpu = 0
 
@@ -41,9 +39,7 @@ class MainWindow(QMainWindow):
 
         self._setup_ui()
         self._apply_style()
-        self._connect_signals()
-
-        self._monitor.start(500)
+        self._nav_buttons["monitor"].setChecked(True)
 
     def _setup_ui(self):
         central = QWidget()
@@ -169,8 +165,6 @@ class MainWindow(QMainWindow):
         reset_btn.clicked.connect(self._reset_gpu)
         sl.addWidget(reset_btn)
 
-        self._nav_buttons["monitor"].setChecked(True)
-
         return sidebar
 
     def _on_language_changed(self, idx):
@@ -194,13 +188,6 @@ class MainWindow(QMainWindow):
         except FileNotFoundError:
             pass
 
-    def _connect_signals(self):
-        self._monitor.sensors_updated.connect(self._on_sensors)
-
-    def _on_sensors(self, index, sensors):
-        if index == self._current_gpu:
-            self._monitor_widget.update_sensors(sensors)
-
     def _navigate(self, name):
         mapping = {
             "monitor": 0,
@@ -222,5 +209,4 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, _("Error"), _("Reset failed: {}").format(e))
 
     def closeEvent(self, event):
-        self._monitor.stop()
         super().closeEvent(event)

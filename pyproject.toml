@@ -4,7 +4,7 @@ build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
 name = "gpuforge"
-version = "1.1.0"
+version = "1.1.1"
 description = "Cross-platform GPU undervolt and overclocking tool"
 requires-python = ">=3.11"
 license = {text = "GPL-3.0-only"}

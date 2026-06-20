@@ -4,12 +4,10 @@ from PySide6.QtWidgets import (
     QLabel, QProgressBar, QSizePolicy,
 )
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFont
 
 from gettext import gettext as _
 
 from gpuforge.backend.gpu_base import GPUBackend, GPUSensors
-from gpuforge.backend.monitor import MonitorController
 
 pg.setConfigOption("background", "#0d1117")
 pg.setConfigOption("foreground", "#e1e4e8")
@@ -20,6 +18,30 @@ class SensorCard(QFrame):
     def __init__(self, title: str, unit: str, color: str = "#58a6ff", parent=None):
         super().__init__(parent)
         self.setObjectName("sensorCard")
+        self.setStyleSheet(f"""
+            QFrame#sensorCard {{
+                background-color: #11161e;
+                border: 1px solid #1e2a3a;
+                border-radius: 10px;
+                padding: 10px 14px;
+            }}
+            QFrame#sensorCard:hover {{
+                border-color: #28303d;
+            }}
+            QLabel#cardTitle {{
+                font-size: 11px; font-weight: 600; color: {color};
+                text-transform: uppercase; letter-spacing: 0.5px;
+                background: transparent;
+            }}
+            QLabel#cardValue {{
+                font-size: 24px; font-weight: 700; color: {color};
+                background: transparent;
+            }}
+            QLabel#cardUnit {{
+                font-size: 11px; font-weight: 500; color: #8b949e;
+                background: transparent;
+            }}
+        """)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 10)
@@ -30,9 +52,7 @@ class SensorCard(QFrame):
 
         self._title_label = QLabel(title)
         self._title_label.setObjectName("cardTitle")
-        self._title_label.setStyleSheet(f"color: {color};")
         header.addWidget(self._title_label)
-
         header.addStretch()
 
         self._bar = QProgressBar()
@@ -42,35 +62,30 @@ class SensorCard(QFrame):
         self._bar.setRange(0, 100)
         self._bar.setTextVisible(False)
         header.addWidget(self._bar)
-
         layout.addLayout(header)
 
         val_layout = QHBoxLayout()
         val_layout.setSpacing(4)
 
-        self._value_label = QLabel("--")
-        self._value_label.setObjectName("cardValue")
-        self._value_label.setStyleSheet(f"color: {color};")
-        val_layout.addWidget(self._value_label)
+        self._value = QLabel("--")
+        self._value.setObjectName("cardValue")
+        val_layout.addWidget(self._value)
 
-        self._unit_label = QLabel(unit)
-        self._unit_label.setObjectName("cardUnit")
-        val_layout.addWidget(self._unit_label)
-
+        unit_label = QLabel(unit)
+        unit_label.setObjectName("cardUnit")
+        val_layout.addWidget(unit_label)
         val_layout.addStretch()
         layout.addLayout(val_layout)
 
     def set_value(self, value: float, bar_pct: float = 0):
-        if abs(value) < 0.01 and value != 0:
-            self._value_label.setText(f"{value:.1f}")
-        elif value >= 1000:
-            self._value_label.setText(f"{value:.0f}")
+        if value >= 1000:
+            self._value.setText(f"{value:.0f}")
         elif value >= 10:
-            self._value_label.setText(f"{value:.1f}")
-        elif value > 0:
-            self._value_label.setText(f"{value:.2f}")
+            self._value.setText(f"{value:.1f}")
+        elif value >= 0.01:
+            self._value.setText(f"{value:.2f}")
         else:
-            self._value_label.setText("0")
+            self._value.setText("0")
         self._bar.setValue(int(bar_pct))
 
 
@@ -78,13 +93,25 @@ class MiniGraph(QFrame):
     def __init__(self, title: str, color: str = "#58a6ff", parent=None):
         super().__init__(parent)
         self.setObjectName("graphCard")
+        self.setStyleSheet(f"""
+            QFrame#graphCard {{
+                background-color: #11161e;
+                border: 1px solid #1e2a3a;
+                border-radius: 10px;
+                padding: 8px 10px;
+            }}
+            QLabel {{
+                font-size: 11px; font-weight: 600; color: {color};
+                text-transform: uppercase; letter-spacing: 0.5px;
+                background: transparent;
+            }}
+        """)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 4, 6, 2)
         layout.setSpacing(2)
 
         title_label = QLabel(title)
-        title_label.setStyleSheet(f"color: {color};")
         layout.addWidget(title_label)
 
         self._plot = pg.PlotWidget()
@@ -95,10 +122,9 @@ class MiniGraph(QFrame):
         self._plot.getAxis("bottom").setStyle(showValues=False)
         self._plot.setMenuEnabled(False)
 
-        fill_brush = pg.mkBrush(color + "33")
+        fill = pg.mkBrush(color + "33") if color.startswith("#") else pg.mkBrush(0, 100, 200, 50)
         pen = pg.mkPen(color=color, width=2)
-        self._curve = self._plot.plot([], [], pen=pen, fillLevel=0, brush=fill_brush)
-
+        self._curve = self._plot.plot([], [], pen=pen, fillLevel=0, brush=fill)
         layout.addWidget(self._plot)
 
     def update_data(self, data: list):
@@ -106,11 +132,9 @@ class MiniGraph(QFrame):
 
 
 class MonitorWidget(QWidget):
-    def __init__(self, backend: GPUBackend, monitor: MonitorController, parent=None):
+    def __init__(self, backend: GPUBackend, parent=None):
         super().__init__(parent)
         self._backend = backend
-        self._monitor = monitor
-        self._current_sensors = GPUSensors()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -118,63 +142,73 @@ class MonitorWidget(QWidget):
 
         title = QLabel(_("Real-Time Monitor"))
         title.setObjectName("sectionTitle")
+        title.setStyleSheet("font-size: 16px; font-weight: 700; color: #f0f6fc;")
         layout.addWidget(title)
 
-        tiles_grid = QGridLayout()
-        tiles_grid.setSpacing(8)
+        tiles = QGridLayout()
+        tiles.setSpacing(8)
 
-        self._temp_tile = SensorCard(_("GPU Temp"), "°C", "#f85149")
-        tiles_grid.addWidget(self._temp_tile, 0, 0)
+        self._temp = SensorCard(_("GPU Temp"), "°C", "#f85149")
+        tiles.addWidget(self._temp, 0, 0)
 
-        self._clock_tile = SensorCard(_("GPU Clock"), "MHz", "#58a6ff")
-        tiles_grid.addWidget(self._clock_tile, 0, 1)
+        self._clock = SensorCard(_("GPU Clock"), "MHz", "#58a6ff")
+        tiles.addWidget(self._clock, 0, 1)
 
-        self._mem_tile = SensorCard(_("Memory Clock"), "MHz", "#d2a8ff")
-        tiles_grid.addWidget(self._mem_tile, 0, 2)
+        self._mem = SensorCard(_("Memory"), "MHz", "#d2a8ff")
+        tiles.addWidget(self._mem, 0, 2)
 
-        self._power_tile = SensorCard(_("Power Draw"), "W", "#d29922")
-        tiles_grid.addWidget(self._power_tile, 0, 3)
+        self._power = SensorCard(_("Power"), "W", "#d29922")
+        tiles.addWidget(self._power, 0, 3)
 
-        self._fan_tile = SensorCard(_("Fan Speed"), "%", "#79c0ff")
-        tiles_grid.addWidget(self._fan_tile, 0, 4)
+        self._fan = SensorCard(_("Fan"), "%", "#79c0ff")
+        tiles.addWidget(self._fan, 0, 4)
 
-        self._util_tile = SensorCard(_("Utilization"), "%", "#3fb950")
-        tiles_grid.addWidget(self._util_tile, 0, 5)
+        self._util = SensorCard(_("Util"), "%", "#3fb950")
+        tiles.addWidget(self._util, 0, 5)
 
-        layout.addLayout(tiles_grid)
+        layout.addLayout(tiles)
 
-        graphs_layout = QHBoxLayout()
-        graphs_layout.setSpacing(8)
+        graphs = QHBoxLayout()
+        graphs.setSpacing(8)
 
         self._temp_graph = MiniGraph(_("Temperature"), "#f85149")
-        graphs_layout.addWidget(self._temp_graph)
+        graphs.addWidget(self._temp_graph)
 
         self._clock_graph = MiniGraph(_("GPU Clock"), "#58a6ff")
-        graphs_layout.addWidget(self._clock_graph)
+        graphs.addWidget(self._clock_graph)
 
         self._power_graph = MiniGraph(_("Power"), "#d29922")
-        graphs_layout.addWidget(self._power_graph)
+        graphs.addWidget(self._power_graph)
 
-        layout.addLayout(graphs_layout, 1)
+        layout.addLayout(graphs, 1)
 
-        self._update_timer = QTimer()
-        self._update_timer.timeout.connect(self._update_graphs)
-        self._update_timer.start(1000)
+        self._data = {"temps": [], "clocks": [], "powers": []}
+        self._timer = QTimer()
+        self._timer.timeout.connect(self._poll)
+        self._timer.start(500)
 
-    def update_sensors(self, sensors: GPUSensors):
-        self._current_sensors = sensors
-        self._temp_tile.set_value(sensors.temp_core)
-        self._clock_tile.set_value(sensors.gpu_clock)
-        self._mem_tile.set_value(sensors.mem_clock)
-        self._power_tile.set_value(sensors.power_watts,
-                                   bar_pct=(sensors.power_watts / max(sensors.power_max_watts, 1)) * 100)
-        self._fan_tile.set_value(sensors.fan_speed_pct)
-        self._util_tile.set_value(sensors.utilization_pct, bar_pct=sensors.utilization_pct)
-
-    def _update_graphs(self):
-        history = self._monitor.get_history(0)
-        if len(history.times) < 2:
+    def _poll(self):
+        try:
+            sensors = self._backend.get_sensors(0)
+        except Exception:
             return
-        self._temp_graph.update_data(list(history.temps))
-        self._clock_graph.update_data(list(history.clocks))
-        self._power_graph.update_data(list(history.powers))
+
+        self._temp.set_value(sensors.temp_core)
+        self._clock.set_value(sensors.gpu_clock)
+        self._mem.set_value(sensors.mem_clock)
+        self._power.set_value(sensors.power_watts,
+                              bar_pct=(sensors.power_watts / max(sensors.power_max_watts, 1)) * 100)
+        self._fan.set_value(sensors.fan_speed_pct)
+        self._util.set_value(sensors.utilization_pct, bar_pct=sensors.utilization_pct)
+
+        self._data["temps"].append(sensors.temp_core)
+        self._data["clocks"].append(sensors.gpu_clock)
+        self._data["powers"].append(sensors.power_watts)
+        if len(self._data["temps"]) > 200:
+            for k in self._data:
+                self._data[k] = self._data[k][-200:]
+
+        if len(self._data["temps"]) > 2:
+            self._temp_graph.update_data(list(self._data["temps"]))
+            self._clock_graph.update_data(list(self._data["clocks"]))
+            self._power_graph.update_data(list(self._data["powers"]))
