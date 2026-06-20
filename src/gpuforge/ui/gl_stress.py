@@ -180,7 +180,7 @@ def _gen_torus(major, minor):
 
 def _gen_noise_tex(size):
     noise = np.random.rand(size, size).astype(np.float32)
-    GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_R8, size, size, 0,
+    GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RED, size, size, 0,
                     GL.GL_RED, GL.GL_FLOAT, noise.tobytes())
 
 
@@ -250,6 +250,12 @@ class GLStressWidget(QOpenGLWidget):
     def set_monitoring(self, backend, gpu_name):
         self._backend = backend
         self._gpu_name = gpu_name or "GPU"
+
+    def start(self):
+        pass  # timer managed by GLStressWindow
+
+    def stop(self):
+        pass
 
     def initializeGL(self):
         if not HAS_OPENGL:
