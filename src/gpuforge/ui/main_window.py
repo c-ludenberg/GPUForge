@@ -28,6 +28,13 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1100, 720)
         self.resize(1280, 800)
 
+        self._gpu_info = None
+        if self._gpu_count > 0:
+            try:
+                self._gpu_info = backend.get_gpu_info(0)
+            except Exception:
+                pass
+
         self._setup_ui()
         self._apply_style()
         self._connect_signals()
@@ -36,118 +43,106 @@ class MainWindow(QMainWindow):
 
     def _setup_ui(self):
         central = QWidget()
+        central.setObjectName("centralWidget")
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(12)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         header = self._build_header()
         layout.addWidget(header)
 
-        content = QHBoxLayout()
-        content.setSpacing(12)
-        layout.addLayout(content, 1)
+        body = QWidget()
+        body.setObjectName("bodyWidget")
+        bl = QHBoxLayout(body)
+        bl.setContentsMargins(16, 12, 16, 12)
+        bl.setSpacing(14)
 
         sidebar = self._build_sidebar()
-        content.addWidget(sidebar)
+        bl.addWidget(sidebar)
 
         self._stack = QStackedWidget()
-        content.addWidget(self._stack, 1)
+        self._stack.setObjectName("contentStack")
+        bl.addWidget(self._stack, 1)
 
-        self._monitor_widget = MonitorWidget(self._backend, self._monitor, self)
-        self._curve_widget = CurveEditorWidget(self._backend, self)
-        self._presets_widget = PresetsWidget(self._backend, self)
-        self._stress_widget = StressTestWidget(self._backend, self)
-        self._game_widget = GameDetectorWidget(self._backend, self)
-
-        self._stack.addWidget(self._monitor_widget)
-        self._stack.addWidget(self._curve_widget)
-        self._stack.addWidget(self._presets_widget)
-        self._stack.addWidget(self._stress_widget)
-        self._stack.addWidget(self._game_widget)
+        layout.addWidget(body, 1)
 
         status = QLabel(f"GPUForge v0.1.0 — {_('Ready')}")
         status.setObjectName("statusLabel")
-        status.setStyleSheet("color: #8b949e; font-size: 11px; padding: 2px 0;")
+        status.setStyleSheet("color: #8b949e; font-size: 11px; padding: 4px 16px; background: transparent;")
         layout.addWidget(status)
-
-        self._sidebar_buttons = []
 
     def _build_header(self):
         h = QWidget()
-        h.setObjectName("header")
-        h.setStyleSheet("background: transparent;")
+        h.setObjectName("headerBar")
+
         hl = QHBoxLayout(h)
-        hl.setContentsMargins(0, 0, 0, 0)
+        hl.setContentsMargins(20, 0, 20, 0)
+        hl.setSpacing(12)
+
+        title_col = QVBoxLayout()
+        title_col.setSpacing(0)
+        title_col.setContentsMargins(0, 0, 0, 0)
 
         title = QLabel("GPUForge")
-        title.setObjectName("titleLabel")
-        hl.addWidget(title)
+        title.setObjectName("appTitle")
+        title_col.addWidget(title)
 
+        subtitle = QLabel(_("GPU Undervolt & Overclocking Tool"))
+        subtitle.setObjectName("appSubtitle")
+        title_col.addWidget(subtitle)
+
+        hl.addLayout(title_col)
         hl.addStretch()
 
+        if self._gpu_info:
+            gpu_name = self._gpu_info.name
+            badge = QLabel(f"  {gpu_name}  ")
+            badge.setObjectName("gpuBadge")
+            hl.addWidget(badge)
+
         self._gpu_selector = QLabel()
-        self._gpu_selector.setStyleSheet("color: #8b949e; font-size: 12px;")
+        self._gpu_selector.setStyleSheet("color: #8b949e; font-size: 12px; background: transparent;")
         if self._gpu_count > 1:
-            self._gpu_selector.setText(f"GPU 1 of {self._gpu_count}")
-        else:
-            self._gpu_selector.setText("")
+            self._gpu_selector.setText(f"GPU 1 / {self._gpu_count}")
         hl.addWidget(self._gpu_selector)
 
         return h
 
     def _build_sidebar(self):
         sidebar = QFrame()
-        sidebar.setObjectName("card")
-        sidebar.setFixedWidth(180)
+        sidebar.setObjectName("sidebar")
+        sidebar.setFixedWidth(190)
         sl = QVBoxLayout(sidebar)
-        sl.setContentsMargins(8, 8, 8, 8)
-        sl.setSpacing(4)
+        sl.setContentsMargins(6, 6, 6, 6)
+        sl.setSpacing(2)
 
         items = [
-            ("monitor", f"📊  {_('Monitor')}"),
-            ("curve", f"📈  {_('Curve Editor')}"),
-            ("presets", f"⚡  {_('Presets')}"),
-            ("stress", f"🧪  {_('Stress Test')}"),
-            ("games", f"🎮  {_('Game Detection')}"),
+            ("monitor", "◉", _("Monitor")),
+            ("curve", "⊞", _("Curve Editor")),
+            ("presets", "⚡", _("Presets")),
+            ("stress", "⟳", _("Stress Test")),
+            ("games", "▷", _("Game Detection")),
         ]
 
         self._nav_buttons = {}
-        for name, label in items:
-            btn = QPushButton(label)
+        for name, icon, label in items:
+            btn = QPushButton(f"  {icon}  {label}")
             btn.setObjectName("navButton")
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
-            btn.setStyleSheet("""
-                QPushButton {
-                    text-align: left;
-                    padding: 10px 14px;
-                    border-radius: 6px;
-                    border: none;
-                    background: transparent;
-                    color: #8b949e;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #21262d;
-                    color: #c9d1d9;
-                }
-                QPushButton:checked {
-                    background-color: #1f6feb22;
-                    color: #58a6ff;
-                    font-weight: 600;
-                }
-            """)
             btn.clicked.connect(lambda checked, n=name: self._navigate(n))
             sl.addWidget(btn)
             self._nav_buttons[name] = btn
 
         sl.addStretch()
 
-        reset_btn = QPushButton(f"🔄  {_('Reset GPU')}")
+        reset_btn = QPushButton(f"  ↺  {_('Reset GPU')}")
         reset_btn.setObjectName("dangerButton")
         reset_btn.clicked.connect(self._reset_gpu)
         sl.addWidget(reset_btn)
+
+        self._nav_buttons["monitor"].setChecked(True)
 
         return sidebar
 

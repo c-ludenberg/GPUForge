@@ -1,5 +1,4 @@
 import pyqtgraph as pg
-from pyqtgraph import PlotWidget
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFrame, QGridLayout,
     QLabel, QProgressBar, QSizePolicy,
@@ -13,28 +12,31 @@ from gpuforge.backend.gpu_base import GPUBackend, GPUSensors
 from gpuforge.backend.monitor import MonitorController
 
 pg.setConfigOption("background", "#0d1117")
-pg.setConfigOption("foreground", "#c9d1d9")
+pg.setConfigOption("foreground", "#e1e4e8")
 pg.setConfigOption("antialias", True)
 
 
-class SensorTile(QFrame):
+class SensorCard(QFrame):
     def __init__(self, title: str, unit: str, color: str = "#58a6ff", parent=None):
         super().__init__(parent)
-        self.setObjectName("card")
-        self.setMinimumHeight(120)
+        self.setObjectName("sensorCard")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
-        layout.setSpacing(2)
+        layout.setContentsMargins(12, 8, 12, 10)
+        layout.setSpacing(4)
 
         header = QHBoxLayout()
+        header.setSpacing(6)
+
         self._title_label = QLabel(title)
-        self._title_label.setStyleSheet(f"color: {color}; font-size: 12px; font-weight: 600;")
-        self._title_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self._title_label.setObjectName("cardTitle")
+        self._title_label.setStyleSheet(f"color: {color};")
         header.addWidget(self._title_label)
 
+        header.addStretch()
+
         self._bar = QProgressBar()
-        self._bar.setMaximumWidth(60)
+        self._bar.setMaximumWidth(48)
         self._bar.setMaximumHeight(4)
         self._bar.setObjectName("utilBar")
         self._bar.setRange(0, 100)
@@ -44,13 +46,15 @@ class SensorTile(QFrame):
         layout.addLayout(header)
 
         val_layout = QHBoxLayout()
+        val_layout.setSpacing(4)
+
         self._value_label = QLabel("--")
-        self._value_label.setObjectName("valueLabel")
+        self._value_label.setObjectName("cardValue")
+        self._value_label.setStyleSheet(f"color: {color};")
         val_layout.addWidget(self._value_label)
 
         self._unit_label = QLabel(unit)
-        self._unit_label.setObjectName("unitLabel")
-        self._unit_label.setStyleSheet(f"color: {color};")
+        self._unit_label.setObjectName("cardUnit")
         val_layout.addWidget(self._unit_label)
 
         val_layout.addStretch()
@@ -63,34 +67,37 @@ class SensorTile(QFrame):
             self._value_label.setText(f"{value:.0f}")
         elif value >= 10:
             self._value_label.setText(f"{value:.1f}")
-        else:
+        elif value > 0:
             self._value_label.setText(f"{value:.2f}")
+        else:
+            self._value_label.setText("0")
         self._bar.setValue(int(bar_pct))
 
 
 class MiniGraph(QFrame):
     def __init__(self, title: str, color: str = "#58a6ff", parent=None):
         super().__init__(parent)
-        self.setObjectName("card")
+        self.setObjectName("graphCard")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setContentsMargins(6, 4, 6, 2)
         layout.setSpacing(2)
 
         title_label = QLabel(title)
-        title_label.setStyleSheet(f"color: {color}; font-size: 11px; font-weight: 600;")
+        title_label.setStyleSheet(f"color: {color};")
         layout.addWidget(title_label)
 
         self._plot = pg.PlotWidget()
-        self._plot.setMinimumHeight(80)
-        self._plot.setMaximumHeight(120)
-        self._plot.showGrid(True, True, alpha=0.1)
+        self._plot.setMinimumHeight(70)
+        self._plot.setMaximumHeight(110)
+        self._plot.showGrid(True, True, alpha=0.08)
         self._plot.getAxis("left").setStyle(showValues=False)
         self._plot.getAxis("bottom").setStyle(showValues=False)
         self._plot.setMenuEnabled(False)
 
+        fill_brush = pg.mkBrush(color + "33")
         pen = pg.mkPen(color=color, width=2)
-        self._curve = self._plot.plot([], [], pen=pen)
+        self._curve = self._plot.plot([], [], pen=pen, fillLevel=0, brush=fill_brush)
 
         layout.addWidget(self._plot)
 
@@ -107,7 +114,7 @@ class MonitorWidget(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(14)
 
         title = QLabel(_("Real-Time Monitor"))
         title.setObjectName("sectionTitle")
@@ -116,22 +123,22 @@ class MonitorWidget(QWidget):
         tiles_grid = QGridLayout()
         tiles_grid.setSpacing(8)
 
-        self._temp_tile = SensorTile(_("GPU Temp"), "°C", "#f85149")
+        self._temp_tile = SensorCard(_("GPU Temp"), "°C", "#f85149")
         tiles_grid.addWidget(self._temp_tile, 0, 0)
 
-        self._clock_tile = SensorTile(_("GPU Clock"), "MHz", "#58a6ff")
+        self._clock_tile = SensorCard(_("GPU Clock"), "MHz", "#58a6ff")
         tiles_grid.addWidget(self._clock_tile, 0, 1)
 
-        self._mem_tile = SensorTile(_("Memory Clock"), "MHz", "#d2a8ff")
+        self._mem_tile = SensorCard(_("Memory Clock"), "MHz", "#d2a8ff")
         tiles_grid.addWidget(self._mem_tile, 0, 2)
 
-        self._power_tile = SensorTile(_("Power Draw"), "W", "#d29922")
+        self._power_tile = SensorCard(_("Power Draw"), "W", "#d29922")
         tiles_grid.addWidget(self._power_tile, 0, 3)
 
-        self._fan_tile = SensorTile(_("Fan Speed"), "%", "#79c0ff")
+        self._fan_tile = SensorCard(_("Fan Speed"), "%", "#79c0ff")
         tiles_grid.addWidget(self._fan_tile, 0, 4)
 
-        self._util_tile = SensorTile(_("Utilization"), "%", "#3fb950")
+        self._util_tile = SensorCard(_("Utilization"), "%", "#3fb950")
         tiles_grid.addWidget(self._util_tile, 0, 5)
 
         layout.addLayout(tiles_grid)
