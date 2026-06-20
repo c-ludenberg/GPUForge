@@ -1,0 +1,196 @@
+# GPUForge Polish translation
+# Copyright (C) 2026 Antergos NeXT
+# This file is distributed under the same license as GPUForge.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: GPUForge 0.1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"Last-Translator: Celestia Ludenberg <ash8820@proton.me>\n"
+"Language-Team: Polish <pl@li.org>\n"
+"Language: pl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 "
+"|| n%100>=20) ? 1 : 2);\n"
+
+#: src/gpuforge/main.py
+msgid "No GPU Detected (Demo)"
+msgstr "Nie wykryto GPU (Demo)"
+
+#: src/gpuforge/ui/main_window.py
+msgid "GPUForge"
+msgstr "GPUForge"
+
+#: src/gpuforge/ui/main_window.py
+msgid "Ready"
+msgstr "Gotowy"
+
+#: src/gpuforge/ui/main_window.py
+msgid "Monitor"
+msgstr "Monitor"
+
+#: src/gpuforge/ui/main_window.py
+msgid "Curve Editor"
+msgstr "Edytor krzywej"
+
+#: src/gpuforge/ui/main_window.py
+msgid "Presets"
+msgstr "Profile"
+
+#: src/gpuforge/ui/main_window.py src/gpuforge/ui/stress_test.py
+msgid "Stress Test"
+msgstr "Test obciążenia"
+
+#: src/gpuforge/ui/main_window.py
+msgid "Game Detection"
+msgstr "Wykrywanie gier"
+
+#: src/gpuforge/ui/main_window.py
+msgid "Reset GPU"
+msgstr "Resetuj GPU"
+
+#: src/gpuforge/ui/main_window.py
+msgid "Error"
+msgstr "Błąd"
+
+#: src/gpuforge/ui/main_window.py
+msgid "Reset failed: {}"
+msgstr "Reset nieudany: {}"
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "Real-Time Monitor"
+msgstr "Monitor na żywo"
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "GPU Temp"
+msgstr "Temp. GPU"
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "Memory Clock"
+msgstr "Taktowanie pamięci"
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "Power Draw"
+msgstr "Pobór mocy"
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "Fan Speed"
+msgstr "Prędkość wentylatora"
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "Utilization"
+msgstr "Wykorzystanie"
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "Temperature"
+msgstr "Temperatura"
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "GPU Clock"
+msgstr "Taktowanie GPU"
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "Power"
+msgstr "Moc"
+
+#: src/gpuforge/ui/curve_editor.py
+msgid "Voltage-Frequency Curve Editor"
+msgstr "Edytor krzywej napięcie-częstotliwość"
+
+#: src/gpuforge/ui/curve_editor.py
+msgid "Core Clock Offset:"
+msgstr "Offset taktowania rdzenia:"
+
+#: src/gpuforge/ui/curve_editor.py
+msgid "Memory Clock Offset:"
+msgstr "Offset taktowania pamięci:"
+
+#: src/gpuforge/ui/curve_editor.py
+msgid "Power Limit:"
+msgstr "Limit mocy:"
+
+#: src/gpuforge/ui/curve_editor.py
+msgid "Apply Offsets"
+msgstr "Zastosuj offsety"
+
+#: src/gpuforge/ui/curve_editor.py
+msgid "Applied"
+msgstr "Zastosowano"
+
+#: src/gpuforge/ui/curve_editor.py
+msgid "Clock offsets and power limit applied."
+msgstr "Offsety taktowania i limit mocy zostały zastosowane."
+
+#: src/gpuforge/ui/presets.py
+msgid "Undervolt Presets"
+msgstr "Profile undervoltu"
+
+#: src/gpuforge/ui/presets.py
+msgid "Apply Preset"
+msgstr "Zastosuj profil"
+
+#: src/gpuforge/ui/presets.py
+msgid "Reset to Defaults"
+msgstr "Przywróć domyślne"
+
+#: src/gpuforge/ui/presets.py
+msgid "No Selection"
+msgstr "Nie wybrano"
+
+#: src/gpuforge/ui/presets.py
+msgid "Select a preset first."
+msgstr "Najpierw wybierz profil."
+
+#: src/gpuforge/ui/presets.py
+msgid "GPU returned to default settings."
+msgstr "GPU przywrócono do ustawień domyślnych."
+
+#: src/gpuforge/ui/stress_test.py
+msgid "Running..."
+msgstr "Uruchomiono..."
+
+#: src/gpuforge/ui/stress_test.py
+msgid "Stopped"
+msgstr "Zatrzymano"
+
+#: src/gpuforge/ui/stress_test.py
+msgid "Start Stress Test"
+msgstr "Rozpocznij test obciążenia"
+
+#: src/gpuforge/ui/stress_test.py
+msgid "Stop Stress Test"
+msgstr "Zatrzymaj test obciążenia"
+
+#: src/gpuforge/ui/stress_test.py
+msgid "Done"
+msgstr "Gotowe"
+
+#: src/gpuforge/ui/stress_test.py
+msgid "Stress test completed without errors."
+msgstr "Test obciążenia zakończony bez błędów."
+
+#: src/gpuforge/ui/game_detector.py
+msgid "Game Detection & Auto-Preset"
+msgstr "Wykrywanie gier i auto-profil"
+
+#: src/gpuforge/ui/game_detector.py
+msgid "Detected Games:"
+msgstr "Wykryte gry:"
+
+#: src/gpuforge/ui/game_detector.py
+msgid "No game detected"
+msgstr "Nie wykryto gry"
+
+#: src/gpuforge/ui/game_detector.py
+msgid "Playing: {}"
+msgstr "Granie: {}"
+
+#: src/gpuforge/ui/game_detector.py
+msgid "Preset: Performance"
+msgstr "Profil: Performance"
+
+#: src/gpuforge/ui/game_detector.py
+msgid "Preset: —"
+msgstr "Profil: —"

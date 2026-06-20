@@ -1,0 +1,202 @@
+# GPUForge
+# Copyright (C) 2026 Antergos NeXT
+# This file is distributed under the same license as GPUForge.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: GPUForge 0.1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"Last-Translator: Automatically generated\n"
+"Language-Team: none\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: src/gpuforge/main.py
+msgid "No GPU Detected (Demo)"
+msgstr ""
+
+#: src/gpuforge/ui/main_window.py
+msgid "GPUForge"
+msgstr ""
+
+#: src/gpuforge/ui/main_window.py
+msgid "Ready"
+msgstr ""
+
+#: src/gpuforge/ui/main_window.py
+msgid "Monitor"
+msgstr ""
+
+#: src/gpuforge/ui/main_window.py
+msgid "Curve Editor"
+msgstr ""
+
+#: src/gpuforge/ui/main_window.py
+msgid "Presets"
+msgstr ""
+
+#: src/gpuforge/ui/main_window.py
+msgid "Stress Test"
+msgstr ""
+
+#: src/gpuforge/ui/main_window.py
+msgid "Game Detection"
+msgstr ""
+
+#: src/gpuforge/ui/main_window.py
+msgid "Reset GPU"
+msgstr ""
+
+#: src/gpuforge/ui/main_window.py
+msgid "Error"
+msgstr ""
+
+#: src/gpuforge/ui/main_window.py
+msgid "Reset failed: {}"
+msgstr ""
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "Real-Time Monitor"
+msgstr ""
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "GPU Temp"
+msgstr ""
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "Memory Clock"
+msgstr ""
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "Power Draw"
+msgstr ""
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "Fan Speed"
+msgstr ""
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "Utilization"
+msgstr ""
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "Temperature"
+msgstr ""
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "GPU Clock"
+msgstr ""
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "Power"
+msgstr ""
+
+#: src/gpuforge/ui/curve_editor.py
+msgid "Voltage-Frequency Curve Editor"
+msgstr ""
+
+#: src/gpuforge/ui/curve_editor.py
+msgid "Core Clock Offset:"
+msgstr ""
+
+#: src/gpuforge/ui/curve_editor.py
+msgid "Memory Clock Offset:"
+msgstr ""
+
+#: src/gpuforge/ui/curve_editor.py
+msgid "Power Limit:"
+msgstr ""
+
+#: src/gpuforge/ui/curve_editor.py
+msgid "Apply Offsets"
+msgstr ""
+
+#: src/gpuforge/ui/curve_editor.py
+msgid "Applied"
+msgstr ""
+
+#: src/gpuforge/ui/curve_editor.py
+msgid "Clock offsets and power limit applied."
+msgstr ""
+
+#: src/gpuforge/ui/presets.py
+msgid "Undervolt Presets"
+msgstr ""
+
+#: src/gpuforge/ui/presets.py
+msgid "Apply Preset"
+msgstr ""
+
+#: src/gpuforge/ui/presets.py
+msgid "Reset to Defaults"
+msgstr ""
+
+#: src/gpuforge/ui/presets.py
+msgid "No Selection"
+msgstr ""
+
+#: src/gpuforge/ui/presets.py
+msgid "Select a preset first."
+msgstr ""
+
+#: src/gpuforge/ui/presets.py
+msgid "Preset '{}' applied."
+msgstr ""
+
+#: src/gpuforge/ui/presets.py
+msgid "GPU returned to default settings."
+msgstr ""
+
+#: src/gpuforge/ui/stress_test.py
+msgid "Stress Test"
+msgstr ""
+
+#: src/gpuforge/ui/stress_test.py
+msgid "Running..."
+msgstr ""
+
+#: src/gpuforge/ui/stress_test.py
+msgid "Stopped"
+msgstr ""
+
+#: src/gpuforge/ui/stress_test.py
+msgid "Start Stress Test"
+msgstr ""
+
+#: src/gpuforge/ui/stress_test.py
+msgid "Stop Stress Test"
+msgstr ""
+
+#: src/gpuforge/ui/stress_test.py
+msgid "Done"
+msgstr ""
+
+#: src/gpuforge/ui/stress_test.py
+msgid "Stress test completed without errors."
+msgstr ""
+
+#: src/gpuforge/ui/game_detector.py
+msgid "Game Detection & Auto-Preset"
+msgstr ""
+
+#: src/gpuforge/ui/game_detector.py
+msgid "Detected Games:"
+msgstr ""
+
+#: src/gpuforge/ui/game_detector.py
+msgid "No game detected"
+msgstr ""
+
+#: src/gpuforge/ui/game_detector.py
+msgid "Playing: {}"
+msgstr ""
+
+#: src/gpuforge/ui/game_detector.py
+msgid "Preset: Performance"
+msgstr ""
+
+#: src/gpuforge/ui/game_detector.py
+msgid "Preset: —"
+msgstr ""

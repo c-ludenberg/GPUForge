@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+build/
+dist/
+*.egg-info/
+*.spec
+*.mo
+**/LC_MESSAGES/*.po
+!src/gpuforge/locale/pl/LC_MESSAGES/gpuforge.po
+.DS_Store
+Thumbs.db
