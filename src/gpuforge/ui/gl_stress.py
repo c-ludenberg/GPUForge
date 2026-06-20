@@ -167,101 +167,140 @@ def _torus(major, minor):
 
 
 def _toilet(major, minor):
-    """Generate a realistic toilet shape - bowl + tank + lid + seat"""
+    """Generate a detailed realistic toilet - bowl, tank, seat, lid, flush handle"""
     v, n, u, idx = [], [], [], []
     
-    # Bowl outer surface (half-torus, wider at top)
+    # === BOWL (main ceramic part) ===
+    bowl_start = 0
     for i in range(major + 1):
-        t = 2.0 * math.pi * i / major
-        ct, st = math.cos(t), math.sin(t)
+        theta = 2.0 * math.pi * i / major
+        ct, st = math.cos(theta), math.sin(theta)
         for j in range(minor + 1):
-            p = math.pi * j / minor  # Half circle
-            cp, sp = math.cos(p), math.sin(p)
-            # Toilet bowl - oval shape
-            bowl_w = 0.28 + 0.12 * cp  # Wider at top
-            bowl_h = -0.25 + 0.45 * sp  # Bowl height
-            v += [bowl_w * ct, bowl_h, bowl_w * st * 0.7]
+            phi = math.pi * j / minor
+            cp, sp = math.cos(phi), math.sin(phi)
+            # Bowl shape - oval with curve
+            bowl_w = 0.30 + 0.14 * cp
+            bowl_h = -0.28 + 0.48 * sp
+            # Add some thickness variation for realism
+            if j < minor * 0.3:
+                bowl_w *= 0.95 + 0.05 * (j / (minor * 0.3))
+            v += [bowl_w * ct, bowl_h, bowl_w * st * 0.68]
             nx, ny, nz = cp * ct, sp, cp * st
-            len_n = math.sqrt(nx*nx + ny*ny + nz*nz)
-            n += [nx/len_n, ny/len_n, nz/len_n] if len_n > 1e-8 else [0, 1, 0]
+            ln = math.sqrt(nx*nx + ny*ny + nz*nz)
+            n += [nx/ln, ny/ln, nz/ln] if ln > 1e-8 else [0, 1, 0]
             u += [i/major, j/minor]
     
-    # Bowl inner (slightly inset)
-    bowl_inner_start = len(v) // 3
+    # === BOWL INNER (hollow part) ===
+    inner_start = len(v) // 3
     for i in range(major + 1):
-        t = 2.0 * math.pi * i / major
-        ct, st = math.cos(t), math.sin(t)
+        theta = 2.0 * math.pi * i / major
+        ct, st = math.cos(theta), math.sin(theta)
         for j in range(minor + 1):
-            p = math.pi * j / minor
-            cp, sp = math.cos(p), math.sin(p)
-            bowl_w = 0.22 + 0.10 * cp
-            bowl_h = -0.22 + 0.42 * sp
-            v += [bowl_w * ct, bowl_h, bowl_w * st * 0.65]
+            phi = math.pi * j / minor
+            cp, sp = math.cos(phi), math.sin(phi)
+            bowl_w = 0.24 + 0.11 * cp
+            bowl_h = -0.24 + 0.44 * sp
+            v += [bowl_w * ct, bowl_h, bowl_w * st * 0.64]
             nx, ny, nz = -cp * ct, -sp, -cp * st
-            len_n = math.sqrt(nx*nx + ny*ny + nz*nz)
-            n += [nx/len_n, ny/len_n, nz/len_n] if len_n > 1e-8 else [0, -1, 0]
+            ln = math.sqrt(nx*nx + ny*ny + nz*nz)
+            n += [nx/ln, ny/ln, nz/ln] if ln > 1e-8 else [0, -1, 0]
             u += [i/major, j/minor]
     
-    # Tank (rectangular box on back)
+    # === TANK (water tank on back) ===
     tank_start = len(v) // 3
-    tank_w, tank_h, tank_d = 0.28, 0.45, 0.18
-    tank_y = 0.15
-    tank_z = 0.35
-    # Front, Back, Top, Bottom, Left, Right faces
-    tank_verts = [
-        # Front face
-        [-tank_w, tank_y, tank_z], [tank_w, tank_y, tank_z], [tank_w, tank_y+tank_h, tank_z], [-tank_w, tank_y+tank_h, tank_z],
-        # Back face
-        [-tank_w, tank_y, tank_z+tank_d], [tank_w, tank_y, tank_z+tank_d], [tank_w, tank_y+tank_h, tank_z+tank_d], [-tank_w, tank_y+tank_h, tank_z+tank_d],
-    ]
-    tank_norms = [
-        [0,0,1], [0,0,1], [0,1,0], [0,1,0],  # Front, Back, Top
-        [0,0,-1], [0,0,-1], [0,-1,0], [0,-1,0],  # Back, Bottom
-    ]
-    for tv, tn in zip(tank_verts, tank_norms):
-        v.extend(tv)
-        n.extend(tn)
-        u.extend([0, 0])
+    tw, th, td = 0.30, 0.50, 0.20
+    ty, tz = 0.18, 0.40
     
-    # Tank lid (top)
+    # Tank vertices (6 faces)
+    tank_box = [
+        # Front
+        [[-tw, ty, tz], [tw, ty, tz], [tw, ty+th, tz], [-tw, ty+th, tz]],
+        # Back  
+        [[-tw, ty, tz+td], [tw, ty, tz+td], [tw, ty+th, tz+td], [-tw, ty+th, tz+td]],
+        # Top
+        [[-tw, ty+th, tz], [tw, ty+th, tz], [tw, ty+th, tz+td], [-tw, ty+th, tz+td]],
+        # Bottom
+        [[-tw, ty, tz], [tw, ty, tz], [tw, ty, tz+td], [-tw, ty, tz+td]],
+        # Left
+        [[-tw, ty, tz], [-tw, ty, tz+td], [-tw, ty+th, tz+td], [-tw, ty+th, tz]],
+        # Right
+        [[tw, ty, tz], [tw, ty, tz+td], [tw, ty+th, tz+td], [tw, ty+th, tz]],
+    ]
+    tank_normals = [[0,0,1], [0,0,-1], [0,1,0], [0,-1,0], [-1,0,0], [1,0,0]]
+    
+    for face_idx, (face, norm) in enumerate(zip(tank_box, tank_normals)):
+        for tv in face:
+            v.extend(tv)
+            n.extend(norm)
+            u.extend([0, 0])
+    
+    # === TANK LID ===
     lid_start = len(v) // 3
+    lid_y = ty + th
     lid_verts = [
-        [-tank_w, tank_y+tank_h, tank_z], [tank_w, tank_y+tank_h, tank_z],
-        [tank_w, tank_y+tank_h, tank_z+tank_d], [-tank_w, tank_y+tank_h, tank_z+tank_d],
+        [-tw, lid_y, tz], [tw, lid_y, tz], [tw, lid_y, tz+td], [-tw, lid_y, tz+td]
     ]
     for lv in lid_verts:
         v.extend(lv)
         n.extend([0, 1, 0])
         u.extend([0, 0])
     
-    # Toilet seat (oval ring on top of bowl)
+    # === SEAT (oval ring) ===
     seat_start = len(v) // 3
-    seat_r = 0.32
+    seat_r = 0.35
     for i in range(major + 1):
-        t = 2.0 * math.pi * i / major
-        ct, st = math.cos(t), math.sin(t)
-        # Outer edge
-        v += [seat_r * ct, 0.02, seat_r * st * 0.7]
+        theta = 2.0 * math.pi * i / major
+        ct, st = math.cos(theta), math.sin(theta)
+        # Outer ring
+        v += [seat_r * ct, 0.025, seat_r * st * 0.70]
         n += [0, 1, 0]
         u += [i/major, 0]
-        # Inner edge
-        v += [seat_r * ct * 0.75, 0.02, seat_r * st * 0.55]
+        # Inner ring (hole)
+        v += [seat_r * ct * 0.72, 0.025, seat_r * st * 0.52]
         n += [0, 1, 0]
         u += [i/major, 1]
     
-    # Lid (sits on seat)
+    # === LID (seat cover, angled up) ===
     lid2_start = len(v) // 3
     for i in range(major + 1):
-        t = 2.0 * math.pi * i / major
-        ct, st = math.cos(t), math.sin(t)
-        v += [seat_r * ct * 0.7, 0.03, seat_r * st * 0.5]
-        n += [0.1, 0.99, 0]
+        theta = 2.0 * math.pi * i / major
+        ct, st = math.cos(theta), math.sin(theta)
+        # Lid outer
+        v += [seat_r * ct * 0.68, 0.035 + i * 0.001, seat_r * st * 0.48]
+        n += [0.05, 0.995, 0.05]
         u += [i/major, 0]
-        v += [seat_r * ct * 0.5, 0.03, seat_r * st * 0.4]
-        n += [0.1, 0.99, 0]
+        # Lid inner
+        v += [seat_r * ct * 0.50, 0.035 + i * 0.001, seat_r * st * 0.36]
+        n += [0.05, 0.995, 0.05]
         u += [i/major, 1]
     
-    # Indices - Bowl outer
+    # === FLUSH HANDLE ===
+    handle_start = len(v) // 3
+    hw, hh = 0.04, 0.08
+    hx, hy, hz = tw - 0.02, ty + th - 0.05, tz + td + 0.03
+    handle_verts = [
+        [hx, hy, hz], [hx+hw, hy, hz], [hx+hw, hy+hh, hz], [hx, hy+hh, hz]
+    ]
+    for hv in handle_verts:
+        v.extend(hv)
+        n.extend([1, 0, 0])
+        u.extend([0, 0])
+    
+    # === BASE/PEDESTAL ===
+    base_start = len(v) // 3
+    bw, bh = 0.25, 0.15
+    base_verts = [
+        [-bw, -0.35, 0.15], [bw, -0.35, 0.15], [bw, -0.35+bh, 0.15], [-bw, -0.35+bh, 0.15],
+        [-bw, -0.35, 0.55], [bw, -0.35, 0.55], [bw, -0.35+bh, 0.55], [-bw, -0.35+bh, 0.55],
+    ]
+    base_norms = [[0,0,1], [0,0,1], [0,1,0], [0,-1,0], [-1,0,0], [1,0,0], [0,0,-1], [0,0,-1]]
+    for bv, bn in zip(base_verts, base_norms):
+        v.extend(bv)
+        n.extend(bn)
+        u.extend([0, 0])
+    
+    # === INDICES ===
+    # Bowl outer
     for i in range(major):
         for j in range(minor):
             a = i * (minor+1) + j
@@ -271,30 +310,20 @@ def _toilet(major, minor):
     # Bowl inner
     for i in range(major):
         for j in range(minor):
-            a = bowl_inner_start + i * (minor+1) + j
+            a = inner_start + i * (minor+1) + j
             b = a + minor + 1
             idx += [a, b, a+1, b, b+1, a+1]
     
     # Tank faces
-    tank_faces = [
-        (0,1,2,3), (4,7,6,5), (0,4,5,1),
-        (2,6,7,3), (0,3,7,4), (1,5,6,2),
-    ]
-    for face in tank_faces:
+    for face in [[0,1,2,3], [4,7,6,5], [0,4,5,1], [2,6,7,3], [0,3,7,4], [1,5,6,2]]:
         a = tank_start + face[0]
         b = tank_start + face[1]
         c = tank_start + face[2]
         d = tank_start + face[3]
         idx.extend([a,b,c, b,d,c])
     
-    # Lid top
-    lid_faces = [(0,1,2,3)]
-    for face in lid_faces:
-        a = lid_start + face[0]
-        b = lid_start + face[1]
-        c = lid_start + face[2]
-        d = lid_start + face[3]
-        idx.extend([a,b,c, b,d,c])
+    # Lid
+    idx.extend([lid_start, lid_start+1, lid_start+2, lid_start+1, lid_start+3, lid_start+2])
     
     # Seat ring
     for i in range(major):
@@ -304,12 +333,23 @@ def _toilet(major, minor):
         d = a + 3
         idx.extend([a,b,c, b,d,c])
     
-    # Lid
+    # Lid cover
     for i in range(major):
         a = lid2_start + i * 2
         b = a + 2
         c = a + 1
         d = a + 3
+        idx.extend([a,b,c, b,d,c])
+    
+    # Flush handle
+    idx.extend([handle_start, handle_start+1, handle_start+2, handle_start+1, handle_start+3, handle_start+2])
+    
+    # Base
+    for face in [[0,1,2,3], [4,7,6,5], [0,4,5,1], [2,6,7,3], [0,3,7,4], [1,5,6,2]]:
+        a = base_start + face[0]
+        b = base_start + face[1]
+        c = base_start + face[2]
+        d = base_start + face[3]
         idx.extend([a,b,c, b,d,c])
     
     return v, n, u, idx
