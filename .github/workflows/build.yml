@@ -2,10 +2,14 @@ name: Build
 
 on:
   push:
+    tags: ["v*"]
     branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-windows:
@@ -73,3 +77,48 @@ jobs:
         with:
           name: GPUForge-linux
           path: dist/GPUForge
+
+  release:
+    needs: [build-windows, build-linux]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: GPUForge-x64
+          path: release
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: GPUForge-linux
+          path: release
+
+      - name: Rename binaries
+        run: |
+          mv release/GPUForge.exe release/GPUForge-windows-x64.exe
+          mv release/GPUForge release/GPUForge-linux-x64
+          chmod +x release/GPUForge-linux-x64
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: GPUForge ${{ github.ref_name }}
+          body: |
+            ## GPUForge ${{ github.ref_name }}
+
+            Pobierz plik wykonywalny dla swojej platformy.
+
+            **Windows:** `GPUForge-windows-x64.exe`
+            **Linux:** `GPUForge-linux-x64`
+
+            ---
+
+            Download the executable for your platform.
+
+            **Windows:** `GPUForge-windows-x64.exe`
+            **Linux:** `GPUForge-linux-x64`
+          files: |
+            release/GPUForge-windows-x64.exe
+            release/GPUForge-linux-x64
+          draft: false
+          prerelease: false
