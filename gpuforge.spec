@@ -28,6 +28,7 @@ a = Analysis(
         'OpenGL',
         'OpenGL.GL',
         'OpenGL.GLU',
+        'numpy',
         'PySide6',
         'PySide6.QtCore',
         'PySide6.QtGui',

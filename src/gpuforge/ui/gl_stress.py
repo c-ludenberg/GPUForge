@@ -1,10 +1,9 @@
 import math
-import struct
 import logging
 import numpy as np
 
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
-from PySide6.QtWidgets import QMainWindow, QLabel, QApplication
+from PySide6.QtWidgets import QMainWindow, QApplication
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFont, QPainter, QColor
 
@@ -21,10 +20,10 @@ except ImportError:
 
 
 QUALITY_CONFIGS = {
-    "low":    dict(major=48,  minor=24,  shells=40,  fur_len=0.12, tex_size=128),
-    "medium": dict(major=96,  minor=48,  shells=80,  fur_len=0.20, tex_size=256),
-    "high":   dict(major=192, minor=96,  shells=160, fur_len=0.30, tex_size=512),
-    "ultra":  dict(major=384, minor=192, shells=300, fur_len=0.40, tex_size=1024),
+    "low":    dict(major=32,  minor=24,  shells=30,  fur_len=0.10, tex_size=128),
+    "medium": dict(major=64,  minor=48,  shells=60,  fur_len=0.18, tex_size=256),
+    "high":   dict(major=128, minor=96,  shells=120, fur_len=0.25, tex_size=512),
+    "ultra":  dict(major=256, minor=192, shells=200, fur_len=0.35, tex_size=1024),
 }
 
 RESOLUTIONS = [
@@ -42,7 +41,6 @@ uniform mat4 u_mvp;
 uniform float u_shell;
 uniform float u_shells;
 uniform float u_fur_len;
-uniform float u_time;
 
 out vec3 v_norm;
 out vec2 v_uv;
@@ -50,8 +48,7 @@ out float v_alpha;
 
 void main() {
     float layer = u_shell / u_shells;
-    vec3 disp = a_norm * u_fur_len * layer;
-    vec3 pos = a_pos + disp + a_norm * sin(u_time + a_pos.x * 10.0 + a_pos.z * 7.0) * 0.005 * layer;
+    vec3 pos = a_pos + a_norm * u_fur_len * layer;
     v_norm = a_norm;
     v_uv = a_uv;
     v_alpha = 1.0 - layer;
@@ -72,25 +69,24 @@ uniform vec3 u_light;
 out vec4 frag;
 
 float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
 
 void main() {
     float d = texture(u_noise, v_uv * 6.0).r;
     float n = hash(v_uv + floor(v_alpha * 60.0));
-    float a = v_alpha * d * (0.8 + 0.2 * n);
-    if (a < 0.01) discard;
+    float a = v_alpha * d * (0.75 + 0.25 * n);
+    if (a < 0.005) discard;
 
     vec3 N = normalize(v_norm);
     vec3 L = normalize(u_light);
     float diff = max(dot(N, L), 0.0);
-    float amb = 0.18;
-    vec3 c = u_color * (diff * 0.7 + amb) + vec3(0.08);
+    float amb = 0.2;
+    vec3 c = u_color * (diff * 0.65 + amb) + 0.06;
 
-    // Rim light for fur look
     vec3 V = vec3(0.0, 0.0, 1.0);
     float rim = 1.0 - max(dot(N, V), 0.0);
-    c += vec3(0.3, 0.15, 0.05) * pow(rim, 3.0) * a;
+    c += vec3(0.25, 0.12, 0.04) * pow(rim, 3.0) * a;
 
     frag = vec4(c, a);
 }
@@ -129,7 +125,7 @@ void main() {
     vec3 L = normalize(u_light);
     float diff = max(dot(N, L), 0.0);
     float amb = 0.15;
-    vec3 c = u_color * (diff * 0.7 + amb) + vec3(0.05);
+    vec3 c = u_color * (diff * 0.7 + amb) + 0.05;
     frag = vec4(c, 1.0);
 }
 """
@@ -170,9 +166,16 @@ def _gen_torus(major, minor):
         for j in range(minor + 1):
             phi = 2.0 * math.pi * j / minor
             cp, sp = math.cos(phi), math.sin(phi)
-            r = 1.0 + 0.4 * cp
-            verts.extend([r * ct, 0.4 * sp, r * st])
-            norms.extend([cp * ct, sp, cp * st])
+            r = 0.35
+            R = 0.8
+            x = (R + r * cp) * ct
+            y = r * sp
+            z = (R + r * cp) * st
+            verts.extend([x, y, z])
+            nx = cp * ct
+            ny = sp
+            nz = cp * st
+            norms.extend([nx, ny, nz])
             uvs.extend([i / major, j / minor])
     for i in range(major):
         for j in range(minor):
@@ -184,8 +187,64 @@ def _gen_torus(major, minor):
 
 def _gen_noise_tex(size):
     noise = np.random.rand(size, size).astype(np.float32)
-    GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_R32F, size, size, 0,
+    GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RED, size, size, 0,
                     GL.GL_RED, GL.GL_FLOAT, noise.tobytes())
+
+
+def _perspective(fov, aspect, near, far):
+    f = 1.0 / math.tan(math.radians(fov) / 2.0)
+    d = near - far
+    return np.array([
+        [f / aspect, 0, 0, 0],
+        [0, f, 0, 0],
+        [0, 0, (far + near) / d, 2 * far * near / d],
+        [0, 0, -1, 0],
+    ], dtype=np.float32)
+
+
+def _look_at(eye, center, up):
+    eye = np.array(eye, dtype=np.float32)
+    center = np.array(center, dtype=np.float32)
+    up = np.array(up, dtype=np.float32)
+    f = center - eye
+    fn = np.linalg.norm(f)
+    if fn < 1e-8:
+        f = np.array([0.0, 0.0, -1.0], dtype=np.float32)
+    else:
+        f /= fn
+    s = np.cross(f, up)
+    sn = np.linalg.norm(s)
+    if sn < 1e-8:
+        s = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    else:
+        s /= sn
+    u = np.cross(s, f)
+    return np.array([
+        [s[0], s[1], s[2], -np.dot(s, eye)],
+        [u[0], u[1], u[2], -np.dot(u, eye)],
+        [-f[0], -f[1], -f[2], np.dot(f, eye)],
+        [0, 0, 0, 1],
+    ], dtype=np.float32)
+
+
+def _rotate_y(angle):
+    c, s = math.cos(angle), math.sin(angle)
+    return np.array([
+        [c, 0, s, 0],
+        [0, 1, 0, 0],
+        [-s, 0, c, 0],
+        [0, 0, 0, 1],
+    ], dtype=np.float32)
+
+
+def _rotate_x(angle):
+    c, s = math.cos(angle), math.sin(angle)
+    return np.array([
+        [1, 0, 0, 0],
+        [0, c, -s, 0],
+        [0, s, c, 0],
+        [0, 0, 0, 1],
+    ], dtype=np.float32)
 
 
 class GLStressWidget(QOpenGLWidget):
@@ -256,42 +315,46 @@ class GLStressWidget(QOpenGLWidget):
             self._initialized = False
             return
 
+        try:
+            self._do_init()
+        except Exception as e:
+            log.error("OpenGL init failed: %s", e, exc_info=True)
+            self._initialized = False
+
+    def _do_init(self):
         GL.glEnable(GL.GL_DEPTH_TEST)
         GL.glEnable(GL.GL_BLEND)
         GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
-        GL.glClearColor(0.04, 0.04, 0.06, 1.0)
+        GL.glClearColor(0.035, 0.035, 0.055, 1.0)
 
         verts, norms, uvs, idxs = _gen_torus(self._cfg["major"], self._cfg["minor"])
         self._index_count = len(idxs)
 
-        vert_data = np.array(verts, dtype=np.float32)
-        norm_data = np.array(norms, dtype=np.float32)
-        uv_data = np.array(uvs, dtype=np.float32)
-        idx_data = np.array(idxs, dtype=np.uint32)
+        n_verts = len(verts) // 3
+        stride = 8
+        data = np.empty(n_verts * stride, dtype=np.float32)
+        for i in range(n_verts):
+            data[i * stride + 0] = verts[i * 3 + 0]
+            data[i * stride + 1] = verts[i * 3 + 1]
+            data[i * stride + 2] = verts[i * 3 + 2]
+            data[i * stride + 3] = norms[i * 3 + 0]
+            data[i * stride + 4] = norms[i * 3 + 1]
+            data[i * stride + 5] = norms[i * 3 + 2]
+            data[i * stride + 6] = uvs[i * 2 + 0]
+            data[i * stride + 7] = uvs[i * 2 + 1]
 
-        stride = 3 + 3 + 2
-        interleaved = np.empty(len(verts) // 3 * stride, dtype=np.float32)
-        interleaved[0::stride] = vert_data[0::3]
-        interleaved[1::stride] = vert_data[1::3]
-        interleaved[2::stride] = vert_data[2::3]
-        interleaved[3::stride] = norm_data[0::3]
-        interleaved[4::stride] = norm_data[1::3]
-        interleaved[5::stride] = norm_data[2::3]
-        interleaved[6::stride] = uv_data[0::2]
-        interleaved[7::stride] = uv_data[1::2]
+        idx_arr = np.array(idxs, dtype=np.uint32)
 
         self._vao = GL.glGenVertexArrays(1)
         GL.glBindVertexArray(self._vao)
 
         self._vbo = GL.glGenBuffers(1)
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self._vbo)
-        GL.glBufferData(GL.GL_ARRAY_BUFFER, interleaved.nbytes,
-                        interleaved.tobytes(), GL.GL_STATIC_DRAW)
+        GL.glBufferData(GL.GL_ARRAY_BUFFER, data.nbytes, data.tobytes(), GL.GL_STATIC_DRAW)
 
         self._ebo = GL.glGenBuffers(1)
         GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self._ebo)
-        GL.glBufferData(GL.GL_ELEMENT_ARRAY_BUFFER, idx_data.nbytes,
-                        idx_data.tobytes(), GL.GL_STATIC_DRAW)
+        GL.glBufferData(GL.GL_ELEMENT_ARRAY_BUFFER, idx_arr.nbytes, idx_arr.tobytes(), GL.GL_STATIC_DRAW)
 
         stride_bytes = stride * 4
         GL.glVertexAttribPointer(0, 3, GL.GL_FLOAT, GL.GL_FALSE, stride_bytes, GL.ctypes.c_void_p(0))
@@ -313,12 +376,22 @@ class GLStressWidget(QOpenGLWidget):
         _gen_noise_tex(self._cfg["tex_size"])
 
         self._initialized = True
+        log.info("GL stress widget initialized (%s, %dx%d, %d shells)",
+                 self._quality_label, self._cfg["major"], self._cfg["minor"],
+                 self._cfg["shells"])
 
     def paintGL(self):
         if not self._initialized:
             self._draw_fallback()
             return
 
+        try:
+            self._do_render()
+        except Exception as e:
+            log.error("Render error: %s", e, exc_info=True)
+            self._draw_fallback()
+
+    def _do_render(self):
         w = self.width() * self.devicePixelRatio()
         h = self.height() * self.devicePixelRatio()
         aspect = w / h
@@ -326,18 +399,15 @@ class GLStressWidget(QOpenGLWidget):
         GL.glViewport(0, 0, int(w), int(h))
         GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
 
-        rot = self._time * 0.3
-
-        proj = self._perspective(45.0, aspect, 0.1, 10.0)
-        view = self._look_at([2.2, 1.2, 2.8], [0, 0, 0], [0, 1, 0])
-        model = self._rotate_y(rot) @ self._rotate_x(rot * 0.15)
+        rot = self._time * 0.35
+        proj = _perspective(50.0, aspect, 0.1, 10.0)
+        view = _look_at([2.4, 1.5, 3.0], [0, 0, 0], [0, 1, 0])
+        model = _rotate_y(rot) @ _rotate_x(rot * 0.12)
         mvp = proj @ view @ model
+        mvp_f = mvp.flatten()
 
-        mvp_f = np.array(mvp, dtype=np.float32).flatten()
-
-        light = np.array([0.5, 0.8, 0.6], dtype=np.float32)
-        color = np.array([0.85, 0.55, 0.20], dtype=np.float32)
-
+        light = np.array([0.6, 0.85, 0.7], dtype=np.float32)
+        color = np.array([0.82, 0.52, 0.18], dtype=np.float32)
         shells = self._cfg["shells"]
         fur_len = self._cfg["fur_len"]
 
@@ -345,7 +415,6 @@ class GLStressWidget(QOpenGLWidget):
         GL.glUniformMatrix4fv(GL.glGetUniformLocation(self._fur_prog, "u_mvp"), 1, GL.GL_FALSE, mvp_f)
         GL.glUniform3fv(GL.glGetUniformLocation(self._fur_prog, "u_color"), 1, color)
         GL.glUniform3fv(GL.glGetUniformLocation(self._fur_prog, "u_light"), 1, light)
-        GL.glUniform1f(GL.glGetUniformLocation(self._fur_prog, "u_time"), self._time)
         GL.glUniform1f(GL.glGetUniformLocation(self._fur_prog, "u_shells"), float(shells))
         GL.glUniform1f(GL.glGetUniformLocation(self._fur_prog, "u_fur_len"), fur_len)
 
@@ -366,31 +435,33 @@ class GLStressWidget(QOpenGLWidget):
 
         GL.glUseProgram(self._base_prog)
         GL.glUniformMatrix4fv(GL.glGetUniformLocation(self._base_prog, "u_mvp"), 1, GL.GL_FALSE, mvp_f)
-        GL.glUniform3fv(GL.glGetUniformLocation(self._base_prog, "u_color"), 1, color * 0.7)
+        GL.glUniform3fv(GL.glGetUniformLocation(self._base_prog, "u_color"), 1, color * 0.65)
         GL.glUniform3fv(GL.glGetUniformLocation(self._base_prog, "u_light"), 1, light)
         GL.glDrawElements(GL.GL_TRIANGLES, self._index_count, GL.GL_UNSIGNED_INT, None)
 
-        self._draw_overlay(w, h)
+        self._draw_overlay(int(w), int(h))
 
     def _draw_overlay(self, vp_w, vp_h):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.TextAntialiasing)
 
+        scale = self.devicePixelRatio()
+        w = vp_w / scale
+        h = vp_h / scale
+
         font_specs = QFont("Consolas, monospace", 13)
         font_specs.setStyleHint(QFont.Monospace)
         painter.setFont(font_specs)
-
         painter.setPen(QColor(180, 220, 255, 230))
 
         stats = [
             f"GPU: {self._gpu_name}",
-            f"Temp: {self._gpu_temp:.0f}°C",
+            f"Temp: {self._gpu_temp:.0f}°C   Load: {self._gpu_load:.0f}%",
             f"FPS: {self._fps:.1f}",
-            f"Shells: {self._cfg['shells']}",
-            f"Quality: {self._quality_label}",
+            f"Shells: {self._cfg['shells']}  Quality: {self._quality_label}",
         ]
         x = 16
-        y = vp_h / self.devicePixelRatio() - 16
+        y = h - 16
         for line in reversed(stats):
             rect = painter.fontMetrics().boundingRect(line)
             y -= rect.height() + 4
@@ -398,13 +469,13 @@ class GLStressWidget(QOpenGLWidget):
                              QColor(0, 0, 0, 140))
             painter.drawText(x, y + rect.height() - 2, line)
 
-        info_line = f"{self._res_w}x{self._res_h}  |  {self._quality_label}  |  Press ESC to exit"
+        info_line = f"{self._res_w}x{self._res_h}  |  Press ESC to exit"
         painter.setPen(QColor(255, 255, 255, 200))
         font_info = QFont("Consolas, monospace", 12)
         painter.setFont(font_info)
         ir = painter.fontMetrics().boundingRect(info_line)
-        ix = vp_w / self.devicePixelRatio() - ir.width() - 16
-        iy = vp_h / self.devicePixelRatio() - 20
+        ix = w - ir.width() - 16
+        iy = h - 20
         painter.fillRect(ix - 4, iy - ir.height() - 4, ir.width() + 8, ir.height() + 8,
                          QColor(0, 0, 0, 140))
         painter.drawText(ix, iy - 2, info_line)
@@ -415,61 +486,18 @@ class GLStressWidget(QOpenGLWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.fillRect(self.rect(), QColor(10, 10, 16))
-
-        font = QFont("Consolas, monospace", 18)
-        painter.setFont(font)
         painter.setPen(QColor(200, 200, 200, 200))
-        msg = f"OpenGL not available.\nInstall PyOpenGL for the GPU stress test.\n\nGPU Temp: {self._gpu_temp:.0f}°C"
+        font = QFont("Consolas, monospace", 16)
+        painter.setFont(font)
+        msg = _("Stress Test Render\n\nGPU Temp: {:.0f}°C\nLoad: {:.0f}%").format(
+            self._gpu_temp, self._gpu_load)
         painter.drawText(self.rect(), Qt.AlignCenter, msg)
         painter.end()
 
     def resizeGL(self, w, h):
         if HAS_OPENGL:
-            GL.glViewport(0, 0, w * self.devicePixelRatio(), h * self.devicePixelRatio())
-
-    def _perspective(self, fov, aspect, near, far):
-        f = 1.0 / math.tan(math.radians(fov) / 2.0)
-        d = near - far
-        return [
-            [f / aspect, 0, 0, 0],
-            [0, f, 0, 0],
-            [0, 0, (far + near) / d, 2 * far * near / d],
-            [0, 0, -1, 0],
-        ]
-
-    def _look_at(self, eye, center, up):
-        eye = np.array(eye, dtype=float)
-        center = np.array(center, dtype=float)
-        up = np.array(up, dtype=float)
-        f = center - eye
-        f /= np.linalg.norm(f)
-        s = np.cross(f, up)
-        s /= np.linalg.norm(s)
-        u = np.cross(s, f)
-        return [
-            [s[0], s[1], s[2], -np.dot(s, eye)],
-            [u[0], u[1], u[2], -np.dot(u, eye)],
-            [-f[0], -f[1], -f[2], np.dot(f, eye)],
-            [0, 0, 0, 1],
-        ]
-
-    def _rotate_y(self, angle):
-        c, s = math.cos(angle), math.sin(angle)
-        return [
-            [c, 0, s, 0],
-            [0, 1, 0, 0],
-            [-s, 0, c, 0],
-            [0, 0, 0, 1],
-        ]
-
-    def _rotate_x(self, angle):
-        c, s = math.cos(angle), math.sin(angle)
-        return [
-            [1, 0, 0, 0],
-            [0, c, -s, 0],
-            [0, s, c, 0],
-            [0, 0, 0, 1],
-        ]
+            GL.glViewport(0, 0, int(w * self.devicePixelRatio()),
+                          int(h * self.devicePixelRatio()))
 
 
 class GLStressWindow(QMainWindow):
