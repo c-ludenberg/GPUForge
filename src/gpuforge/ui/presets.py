@@ -2,7 +2,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout,
     QFrame, QListWidget, QListWidgetItem, QMessageBox,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSize
 
 from gettext import gettext as _
 
@@ -40,7 +40,7 @@ class PresetsWidget(QWidget):
             item = QListWidgetItem(f"  {name}")
             item.setData(Qt.UserRole, name.lower())
             item.setToolTip(description)
-            item.setSizeHint(50, 50)
+            item.setSizeHint(QSize(50, 50))
             self._preset_list.addItem(item)
 
         self._preset_list.setStyleSheet("""
