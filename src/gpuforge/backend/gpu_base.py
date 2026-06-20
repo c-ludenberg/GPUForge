@@ -67,6 +67,20 @@ PRESETS_LIBRARY: dict[str, list[UndervoltPreset]] = {
         core_clock_offset=0,
         mem_clock_offset=200,
     ),
+    "extreme": UndervoltPreset(
+        name="Extreme",
+        description="Aggressive OC with higher power limit",
+        power_limit_watts=350,
+        core_clock_offset=150,
+        mem_clock_offset=400,
+    ),
+    "overdrive": UndervoltPreset(
+        name="OVERDRIVE",
+        description="Maximum performance, use with extreme cooling",
+        power_limit_watts=400,
+        core_clock_offset=200,
+        mem_clock_offset=600,
+    ),
     "max": UndervoltPreset(
         name="Max",
         description="Maximum overclock with undervolt for peak performance",
@@ -79,6 +93,69 @@ PRESETS_LIBRARY: dict[str, list[UndervoltPreset]] = {
 
 class GPUError(Exception):
     pass
+
+
+def get_profiles_dir() -> str:
+    """Get the GPUForge profiles directory."""
+    import platformdirs
+    import os
+    profiles = os.path.join(platformdirs.user_config_dir("GPUForge", ensure_exists=True), "profiles")
+    os.makedirs(profiles, exist_ok=True)
+    return profiles
+
+
+def export_msi_afterburner_profile(preset: UndervoltPreset, voltage_curve: list[VoltagePoint] = None, save_to_profiles: bool = True) -> str:
+    """Export preset as MSI Afterburner XML profile."""
+    import xml.etree.ElementTree as ET
+
+    root = ET.Element("MBProfile")
+    root.set("version", "1.0")
+
+    # Core clock offset
+    core = ET.SubElement(root, "Card")
+    core.set("type", "0")
+    ET.SubElement(core, "str").text = "Core Clock"
+    ET.SubElement(core, "val").text = str(preset.core_clock_offset)
+    ET.SubElement(core, "sys").text = "0"
+
+    # Memory clock offset
+    mem = ET.SubElement(root, "Card")
+    mem.set("type", "1")
+    ET.SubElement(mem, "str").text = "Memory Clock"
+    ET.SubElement(mem, "val").text = str(preset.mem_clock_offset)
+    ET.SubElement(mem, "sys").text = "0"
+
+    # Power limit (if set)
+    if preset.power_limit_watts:
+        power = ET.SubElement(root, "Card")
+        power.set("type", "2")
+        ET.SubElement(power, "str").text = "Power Limit"
+        ET.SubElement(power, "val").text = str(preset.power_limit_watts)
+        ET.SubElement(power, "sys").text = "0"
+
+    # Voltage curve points (if provided)
+    if voltage_curve:
+        for i, point in enumerate(voltage_curve):
+            vc = ET.SubElement(root, "Card")
+            vc.set("type", "3")
+            ET.SubElement(vc, "str").text = f"Voltage{i}"
+            ET.SubElement(vc, "val").text = str(point.voltage_mv)
+            ET.SubElement(vc, "sys").text = "0"
+
+    xml_content = ET.tostring(root, encoding="unicode")
+
+    # Auto-save to profiles folder
+    if save_to_profiles:
+        import os
+        profiles_dir = get_profiles_dir()
+        filename = os.path.join(profiles_dir, f"GPUForge_{preset.name.replace(' ', '_')}.xml")
+        try:
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(xml_content)
+        except Exception:
+            pass  # Silently fail if can't write
+
+    return xml_content
 
 
 class GPUBackend(ABC):

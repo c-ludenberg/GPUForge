@@ -210,3 +210,19 @@ msgstr "Zmieniono język"
 #: src/gpuforge/ui/main_window.py
 msgid "Language changed to {}.\nRestart GPUForge to apply."
 msgstr "Zmieniono język na {}.\nUruchom GPUForge ponownie, aby zastosować."
+
+#: src/gpuforge/ui/presets.py
+msgid "Export MSI AB"
+msgstr "Eksport MSI AB"
+
+#: src/gpuforge/ui/presets.py
+msgid "Export MSI Afterburner Profile"
+msgstr "Eksport profilu MSI Afterburner"
+
+#: src/gpuforge/ui/presets.py
+msgid "Exported"
+msgstr "Wyeksportowano"
+msgid "MSI AB: %s"
+msgstr "MSI AB: %s"
+msgid "Profiles folder"
+msgstr "Folder profili"
