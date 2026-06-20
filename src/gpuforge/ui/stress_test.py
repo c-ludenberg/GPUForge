@@ -1,18 +1,15 @@
-import subprocess
-import os
-import shutil
-import time
 import logging
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout,
-    QFrame, QProgressBar, QMessageBox,
+    QFrame, QComboBox, QMessageBox,
 )
 from PySide6.QtCore import Qt, QTimer
 
 from gettext import gettext as _
 
 from gpuforge.backend.gpu_base import GPUBackend
+from gpuforge.ui.gl_stress import GLStressWindow, RESOLUTIONS, QUALITY_CONFIGS
 
 log = logging.getLogger(__name__)
 
@@ -21,9 +18,7 @@ class StressTestWidget(QWidget):
     def __init__(self, backend: GPUBackend, parent=None):
         super().__init__(parent)
         self._backend = backend
-        self._running = False
-        self._process = None
-        self._temp_history = []
+        self._stress_window = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -35,159 +30,122 @@ class StressTestWidget(QWidget):
         layout.addWidget(title)
 
         desc = QLabel(_(
-            "Runs glmark2 or glxgears to put real GPU load on the card.\n"
-            "Temperatures are monitored during the test."
+            "Launch a fullscreen FurMark-style GPU stress test.\n"
+            "Renders a furry 3D torus with configurable shader complexity.\n"
+            "Monitor temps and FPS in the overlay during the test."
         ))
         desc.setStyleSheet("color: #8b949e; font-size: 12px;")
         desc.setWordWrap(True)
         layout.addWidget(desc)
 
-        status_frame = QFrame()
-        status_frame.setObjectName("card")
-        status_frame.setStyleSheet("""
+        config_frame = QFrame()
+        config_frame.setObjectName("card")
+        config_frame.setStyleSheet("""
             QFrame#card { background-color: #11161e; border: 1px solid #1e2a3a;
                           border-radius: 10px; padding: 14px; }
+            QLabel { background: transparent; }
         """)
-        sl = QVBoxLayout(status_frame)
-        sl.setSpacing(8)
+        cl = QVBoxLayout(config_frame)
+        cl.setSpacing(10)
 
-        self._status = QLabel(_("Ready"))
-        self._status.setStyleSheet("font-weight: 600; font-size: 16px;")
-        sl.addWidget(self._status)
+        res_row = QHBoxLayout()
+        res_row.addWidget(QLabel(_("Resolution:")))
+        self._res_combo = QComboBox()
+        self._res_combo.addItems(RESOLUTIONS)
+        self._res_combo.setCurrentText("1920x1080")
+        res_row.addWidget(self._res_combo)
+        res_row.addStretch()
+        cl.addLayout(res_row)
 
-        self._progress = QProgressBar()
-        self._progress.setRange(0, 100)
-        self._progress.setValue(0)
-        sl.addWidget(self._progress)
+        qual_row = QHBoxLayout()
+        qual_row.addWidget(QLabel(_("Quality:")))
+        self._qual_combo = QComboBox()
+        for k in ["low", "medium", "high", "ultra"]:
+            cfg = QUALITY_CONFIGS[k]
+            label = f"{k.capitalize()}  ({cfg['shells']} shells, {cfg['major']}×{cfg['minor']} segments)"
+            self._qual_combo.addItem(label, k)
+        self._qual_combo.setCurrentIndex(1)
+        qual_row.addWidget(self._qual_combo)
+        qual_row.addStretch()
+        cl.addLayout(qual_row)
 
-        self._temp_label = QLabel(_("Current GPU temp: -- °C"))
-        self._temp_label.setStyleSheet("color: #8b949e;")
-        sl.addWidget(self._temp_label)
+        warn = QLabel(_(
+            "⚠ This will run fullscreen. Press ESC to exit. "
+            "Monitor your GPU temperatures closely."
+        ))
+        warn.setStyleSheet("color: #d29922; font-size: 11px; background: transparent;")
+        warn.setWordWrap(True)
+        cl.addWidget(warn)
 
-        self._peak_label = QLabel(_("Peak temp: -- °C"))
-        self._peak_label.setStyleSheet("color: #f85149; font-weight: 600;")
-        sl.addWidget(self._peak_label)
+        layout.addWidget(config_frame)
 
-        layout.addWidget(status_frame)
-
-        self._btn = QPushButton(f"▶  {_('Start Stress Test')}")
+        self._btn = QPushButton(f"▶  {_('Launch Stress Test')}")
         self._btn.setObjectName("primaryButton")
         self._btn.setStyleSheet("""
             QPushButton { background-color: #1a7f37; border: 1px solid #2ea043;
                           color: white; border-radius: 8px; padding: 10px 20px;
                           font-size: 14px; font-weight: 600; }
             QPushButton:hover { background-color: #238636; }
-            QPushButton#stopBtn { background-color: #b62324; border-color: #f85149; }
-            QPushButton#stopBtn:hover { background-color: #da3633; }
         """)
-        self._btn.clicked.connect(self._toggle)
+        self._btn.clicked.connect(self._launch)
         layout.addWidget(self._btn)
+
+        self._status = QLabel(_("Ready"))
+        self._status.setStyleSheet("font-weight: 600; font-size: 14px; color: #8b949e;")
+        layout.addWidget(self._status)
+
+        self._stats = QLabel()
+        self._stats.setStyleSheet("color: #8b949e; font-size: 12px;")
+        self._stats.setWordWrap(True)
+        layout.addWidget(self._stats)
 
         layout.addStretch()
 
-        self._monitor_timer = QTimer()
-        self._monitor_timer.timeout.connect(self._monitor)
-        self._elapsed = 0
-
-    def _toggle(self):
-        if self._running:
-            self._stop()
-        else:
-            self._start()
-
-    def _start(self):
-        self._running = True
-        self._elapsed = 0
-        self._temp_history = []
-        self._progress.setValue(0)
-        self._btn.setText(f"⏹  {_('Stop Stress Test')}")
-        self._btn.setObjectName("stopBtn")
-        self._btn.setStyleSheet(self._btn.styleSheet())
-        self._status.setText(_("Running..."))
-
-        stressor = self._find_stressor()
-        if not stressor:
-            QMessageBox.warning(
-                self, _("Error"),
-                _("No GPU stress tool found.\nInstall glmark2 or mesa-utils (glxgears).")
-            )
-            self._stop()
+    def _launch(self):
+        if self._stress_window is not None:
             return
 
-        log.info("Starting GPU stress test with: %s", stressor)
-        try:
-            env = os.environ.copy()
-            env["DISPLAY"] = env.get("DISPLAY", ":0")
-            env["__GL_SYNC_TO_VBLANK"] = "0"
-
-            if "glmark2" in stressor:
-                self._process = subprocess.Popen(
-                    [stressor, "--run-forever", "--fullscreen"],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    env=env,
-                )
-            else:
-                self._process = subprocess.Popen(
-                    [stressor],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    env=env,
-                )
-        except FileNotFoundError:
-            QMessageBox.warning(self, _("Error"), _("Failed to launch stress tool."))
-            self._stop()
-            return
-
-        self._monitor_timer.start(2000)
-
-    def _stop(self):
-        self._running = False
-        self._monitor_timer.stop()
-
-        if self._process and self._process.poll() is None:
-            self._process.terminate()
-            try:
-                self._process.wait(timeout=3)
-            except Exception:
-                self._process.kill()
-        self._process = None
-
-        self._btn.setText(f"▶  {_('Start Stress Test')}")
-        self._btn.setObjectName("")
-        self._status.setText(_("Stopped"))
-        self._progress.setValue(0)
-        self._elapsed = 0
-
-        if self._temp_history:
-            peak = max(self._temp_history)
-            QMessageBox.information(
-                self, _("Test Complete"),
-                _("Peak GPU temperature during test: {:.0f} °C").format(peak)
-            )
-
-    def _monitor(self):
-        self._elapsed += 2
-        self._progress.setValue(min(self._elapsed, 120))
+        res_text = self._res_combo.currentText()
+        res_w, res_h = map(int, res_text.split("x"))
+        quality = self._qual_combo.currentData()
 
         try:
-            sensors = self._backend.get_sensors(0)
-            temp = sensors.temp_core
-            self._temp_history.append(temp)
-
-            self._temp_label.setText(_("Current GPU temp: {:.0f} °C").format(temp))
-            peak = max(self._temp_history)
-            self._peak_label.setText(_("Peak temp: {:.0f} °C").format(peak))
+            gpu_info = self._backend.get_gpu_info(0)
+            gpu_name = gpu_info.name
         except Exception:
-            pass
+            gpu_name = ""
 
-        if self._elapsed >= 120:
-            self._stop()
-            QMessageBox.information(
-                self, _("Done"),
-                _("Stress test completed. GPU was loaded for 2 minutes.")
+        log.info("Launching GL stress test: %s %s", quality, res_text)
+        self._stress_window = GLStressWindow(quality, res_w, res_h, self._backend, gpu_name)
+        self._stress_window.closed.connect(self._on_closed)
+
+        self._btn.setEnabled(False)
+        self._btn.setText(_("Running..."))
+        self._status.setText(_("Stress test running — press ESC to exit"))
+
+        self._poll_timer = QTimer()
+        self._poll_timer.timeout.connect(self._poll_stats)
+        self._poll_timer.start(1000)
+
+    def _poll_stats(self):
+        if self._stress_window is None:
+            return
+        fps = self._stress_window.fps
+        try:
+            s = self._backend.get_sensors(0)
+            self._stats.setText(
+                _("FPS: {:.0f}  |  Temp: {:.0f}°C  |  Load: {:.0f}%").format(
+                    fps, s.temp_core, s.utilization_pct
+                )
             )
+        except Exception:
+            self._stats.setText(_("FPS: {:.0f}").format(fps))
 
-    def _find_stressor(self):
-        for tool in ["glmark2", "glmark2-es2", "glxgears"]:
-            if shutil.which(tool):
-                return tool
-        return None
+    def _on_closed(self):
+        self._stress_window = None
+        self._btn.setEnabled(True)
+        self._btn.setText(f"▶  {_('Launch Stress Test')}")
+        self._status.setText(_("Ready"))
+        self._stats.setText("")
+        if hasattr(self, "_poll_timer"):
+            self._poll_timer.stop()
