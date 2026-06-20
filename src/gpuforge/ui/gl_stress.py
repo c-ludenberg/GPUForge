@@ -60,7 +60,7 @@ uniform sampler2D u_noise;
 uniform vec3 u_color;
 uniform vec3 u_light;
 uniform float u_gloss;
-out vec4 frag;
+out vec4 out_color;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 void main() {
     float d = texture(u_noise, v_uv * 8.0).r;
@@ -75,7 +75,7 @@ void main() {
     vec3 V = vec3(0.0, 0.0, 1.0);
     float rim = 1.0 - max(dot(N, V), 0.0);
     c += u_color * 0.3 * pow(rim, 4.0) * a;
-    frag = vec4(c, a);
+    out_color = vec4(c, a);
 }
 """
 
@@ -101,7 +101,7 @@ in vec2 v_uv;
 uniform vec3 u_color;
 uniform vec3 u_light;
 uniform float u_gloss;
-out vec4 frag;
+out vec4 out_color;
 void main() {
     vec3 N = normalize(v_norm);
     vec3 L = normalize(u_light);
@@ -111,7 +111,7 @@ void main() {
     vec3 H = normalize(L + V);
     float spec = pow(max(dot(N, H), 0.0), 32.0) * u_gloss;
     vec3 c = u_color * (diff * 0.7 + amb) + vec3(1.0) * spec * 0.5 + 0.05;
-    frag = vec4(c, 1.0);
+    out_color = vec4(c, 1.0);
 }
 """
 
@@ -149,7 +149,14 @@ def _torus(major, minor):
             cp, sp = math.cos(p), math.sin(p)
             r, R = 0.25, 0.80
             v += [(R + r*cp)*ct, r*sp, (R + r*cp)*st]
-            n += [cp*ct, sp, cp*st]
+            # Normal: radial direction from torus center axis
+            nx, ny, nz = cp*ct, sp, cp*st
+            # Normalize to avoid zero vectors at seams
+            len_n = math.sqrt(nx*nx + ny*ny + nz*nz)
+            if len_n > 1e-8:
+                n += [nx/len_n, ny/len_n, nz/len_n]
+            else:
+                n += [0.0, 1.0, 0.0]  # fallback
             u += [i/major, j/minor]
     for i in range(major):
         for j in range(minor):
