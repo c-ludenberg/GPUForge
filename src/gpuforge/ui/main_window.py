@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
     QLabel, QPushButton, QFrame, QStackedWidget, QSizePolicy,
+    QComboBox, QMessageBox,
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont, QIcon
@@ -17,9 +18,12 @@ from gpuforge.ui.game_detector import GameDetectorWidget
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, backend: GPUBackend, parent=None):
+    def __init__(self, backend: GPUBackend, current_lang="pl", available_languages=None, on_language_change=None, parent=None):
         super().__init__(parent)
         self._backend = backend
+        self._current_lang = current_lang
+        self._available_languages = available_languages or {"pl": "Polski", "en": "English"}
+        self._on_language_change = on_language_change
         self._monitor = MonitorController(backend)
         self._gpu_count = max(backend.get_gpu_count(), 1)
         self._current_gpu = 0
@@ -67,7 +71,7 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(body, 1)
 
-        status = QLabel(f"GPUForge v0.1.0 — {_('Ready')}")
+        status = QLabel(f"GPUForge v1.1.0 — {_('Ready')}")
         status.setObjectName("statusLabel")
         status.setStyleSheet("color: #8b949e; font-size: 11px; padding: 4px 16px; background: transparent;")
         layout.addWidget(status)
@@ -137,6 +141,29 @@ class MainWindow(QMainWindow):
 
         sl.addStretch()
 
+        lang_box = QWidget()
+        lang_box.setObjectName("langBox")
+        lang_box.setStyleSheet("background: transparent; border: none;")
+        lang_layout = QVBoxLayout(lang_box)
+        lang_layout.setContentsMargins(4, 0, 4, 0)
+        lang_layout.setSpacing(2)
+
+        lang_label = QLabel(_("Language"))
+        lang_label.setStyleSheet("color: #8b949e; font-size: 10px; font-weight: 600; letter-spacing: 0.5px;")
+        lang_layout.addWidget(lang_label)
+
+        self._lang_combo = QComboBox()
+        lang_codes = []
+        for code, name in self._available_languages.items():
+            self._lang_combo.addItem(name, code)
+            lang_codes.append(code)
+        current_idx = lang_codes.index(self._current_lang) if self._current_lang in lang_codes else 0
+        self._lang_combo.setCurrentIndex(current_idx)
+        self._lang_combo.currentIndexChanged.connect(self._on_language_changed)
+        lang_layout.addWidget(self._lang_combo)
+
+        sl.addWidget(lang_box)
+
         reset_btn = QPushButton(f"  ↺  {_('Reset GPU')}")
         reset_btn.setObjectName("dangerButton")
         reset_btn.clicked.connect(self._reset_gpu)
@@ -145,6 +172,18 @@ class MainWindow(QMainWindow):
         self._nav_buttons["monitor"].setChecked(True)
 
         return sidebar
+
+    def _on_language_changed(self, idx):
+        lang_code = self._lang_combo.itemData(idx)
+        if lang_code == self._current_lang:
+            return
+        if self._on_language_change:
+            self._on_language_change(lang_code)
+        msg = QMessageBox(self)
+        msg.setWindowTitle(_("Language Changed"))
+        msg.setText(_("Language changed to {}.\nRestart GPUForge to apply.").format(self._lang_combo.currentText()))
+        msg.setIcon(QMessageBox.Information)
+        msg.exec()
 
     def _apply_style(self):
         import os

@@ -31,28 +31,71 @@ def detect_backends():
     return backends
 
 
-def setup_i18n():
+AVAILABLE_LANGUAGES = {
+    "pl": "Polski",
+    "en": "English",
+}
+
+DEFAULT_LANGUAGE = "pl"
+
+def setup_i18n(lang_code: str = None):
     import gettext
     import locale
+    import json
+    import platformdirs
+
     locale_dir = os.path.join(os.path.dirname(__file__), "locale")
-    try:
-        locale.setlocale(locale.LC_ALL, "")
-    except locale.Error:
-        pass
-    sys_lang, _ = locale.getlocale()
-    if sys_lang:
-        lang_code = sys_lang[:2]
-    else:
-        lang_code = "en"
+
+    if lang_code is None:
+        config_dir = platformdirs.user_config_dir("GPUForge", ensure_exists=True)
+        config_path = os.path.join(config_dir, "settings.json")
+        try:
+            with open(config_path) as f:
+                settings = json.load(f)
+                lang_code = settings.get("language")
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            lang_code = None
+
+    if lang_code is None:
+        try:
+            locale.setlocale(locale.LC_ALL, "")
+            sys_lang, _ = locale.getlocale()
+            if sys_lang:
+                lang_code = sys_lang[:2]
+            else:
+                lang_code = DEFAULT_LANGUAGE
+        except locale.Error:
+            lang_code = DEFAULT_LANGUAGE
+
+    if lang_code not in AVAILABLE_LANGUAGES:
+        lang_code = DEFAULT_LANGUAGE
+
     try:
         trans = gettext.translation("gpuforge", locale_dir, [lang_code], fallback=True)
         trans.install()
     except Exception:
         gettext.install("gpuforge", locale_dir, fallback=True)
 
+    return lang_code
+
+
+def save_language(lang_code: str):
+    import json
+    import platformdirs
+    config_dir = platformdirs.user_config_dir("GPUForge", ensure_exists=True)
+    config_path = os.path.join(config_dir, "settings.json")
+    try:
+        with open(config_path) as f:
+            settings = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        settings = {}
+    settings["language"] = lang_code
+    with open(config_path, "w") as f:
+        json.dump(settings, f)
+
 
 def main():
-    setup_i18n()
+    current_lang = setup_i18n()
 
     from PySide6.QtWidgets import QApplication
     from gpuforge.ui.main_window import MainWindow
@@ -83,7 +126,7 @@ def main():
         backend = backends[0][1]
         log.info("Using %s backend", backends[0][0])
 
-    window = MainWindow(backend)
+    window = MainWindow(backend, current_lang=current_lang, available_languages=AVAILABLE_LANGUAGES, on_language_change=save_language)
     window.show()
 
     sys.exit(app.exec())

@@ -4,7 +4,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: GPUForge 0.1.0\n"
+"Project-Id-Version: GPUForge 1.1.0\n"
 "Report-Msgid-Bugs-To: \n"
 "Last-Translator: Celestia Ludenberg <ash8820@proton.me>\n"
 "Language-Team: Polish <pl@li.org>\n"
@@ -194,3 +194,19 @@ msgstr "Profil: Performance"
 #: src/gpuforge/ui/game_detector.py
 msgid "Preset: —"
 msgstr "Profil: —"
+
+#: src/gpuforge/ui/main_window.py
+msgid "GPU Undervolt & Overclocking Tool"
+msgstr "Narzędzie do undervoltingu i overclockingu GPU"
+
+#: src/gpuforge/ui/main_window.py
+msgid "Language"
+msgstr "Język"
+
+#: src/gpuforge/ui/main_window.py
+msgid "Language Changed"
+msgstr "Zmieniono język"
+
+#: src/gpuforge/ui/main_window.py
+msgid "Language changed to {}.\nRestart GPUForge to apply."
+msgstr "Zmieniono język na {}.\nUruchom GPUForge ponownie, aby zastosować."
