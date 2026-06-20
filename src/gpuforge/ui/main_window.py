@@ -79,7 +79,7 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(body, 1)
 
-        status = QLabel(f"GPUForge v1.1.5 — {_('Ready')}")
+        status = QLabel(f"GPUForge v1.2.0 — {_('Ready')}")
         status.setObjectName("statusLabel")
         status.setStyleSheet("color: #8b949e; font-size: 11px; padding: 4px 16px; background: transparent;")
         layout.addWidget(status)
