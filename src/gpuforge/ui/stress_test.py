@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, QTimer
 from gettext import gettext as _
 
 from gpuforge.backend.gpu_base import GPUBackend
-from gpuforge.ui.gl_stress import GLStressWindow, RESOLUTIONS, QUALITY_CONFIGS
+from gpuforge.ui.gl_stress import GLStressWindow, RESOLUTIONS, QUALITY_CONFIGS, MODEL_GENERATORS
 
 log = logging.getLogger(__name__)
 
@@ -69,6 +69,17 @@ class StressTestWidget(QWidget):
         qual_row.addStretch()
         cl.addLayout(qual_row)
 
+        model_row = QHBoxLayout()
+        model_row.addWidget(QLabel(_("Model:")))
+        self._model_combo = QComboBox()
+        model_names = {"torus": "Torus (furry donut)", "donut": "Donut", "toilet": "🚽 Toilet"}
+        for m, label in model_names.items():
+            self._model_combo.addItem(label, m)
+        self._model_combo.setCurrentIndex(0)
+        model_row.addWidget(self._model_combo)
+        model_row.addStretch()
+        cl.addLayout(model_row)
+
         warn = QLabel(_(
             "⚠ This will run fullscreen. Press ESC to exit. "
             "Monitor your GPU temperatures closely."
@@ -108,6 +119,7 @@ class StressTestWidget(QWidget):
         res_text = self._res_combo.currentText()
         res_w, res_h = map(int, res_text.split("x"))
         quality = self._qual_combo.currentData()
+        model = self._model_combo.currentData()
 
         try:
             gpu_info = self._backend.get_gpu_info(0)
@@ -115,8 +127,8 @@ class StressTestWidget(QWidget):
         except Exception:
             gpu_name = ""
 
-        log.info("Launching GL stress test: %s %s", quality, res_text)
-        self._stress_window = GLStressWindow(quality, res_w, res_h, self._backend, gpu_name)
+        log.info("Launching GL stress test: %s %s %s", quality, res_text, model)
+        self._stress_window = GLStressWindow(quality, res_w, res_h, self._backend, gpu_name, model)
         self._stress_window.closed.connect(self._on_closed)
 
         self._btn.setEnabled(False)

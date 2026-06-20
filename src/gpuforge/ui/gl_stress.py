@@ -166,6 +166,68 @@ def _torus(major, minor):
     return v, n, u, idx
 
 
+def _toilet(major, minor):
+    """Generate a toilet shape - bowl + tank + lid"""
+    v, n, u, idx = [], [], [], []
+    
+    # Bowl (torus-like but wider at bottom)
+    for i in range(major + 1):
+        t = 2.0 * math.pi * i / major
+        ct, st = math.cos(t), math.sin(t)
+        for j in range(minor + 1):
+            p = 2.0 * math.pi * j / minor
+            cp, sp = math.cos(p), math.sin(p)
+            # Toilet bowl shape - wider at top, narrower at bottom
+            bowl_w = 0.3 + 0.15 * (1.0 - j/minor)
+            y = -0.3 + 0.5 * (j / minor)
+            v += [bowl_w * cp * ct, y, bowl_w * sp]
+            nx, ny, nz = cp*ct, 0.1, cp*st
+            len_n = math.sqrt(nx*nx + ny*ny + nz*nz)
+            n += [nx/len_n, ny/len_n, nz/len_n] if len_n > 1e-8 else [0, 1, 0]
+            u += [i/major, j/minor]
+    
+    # Tank (box on back)
+    tank_start = len(v) // 3
+    tank_w, tank_h, tank_d = 0.25, 0.4, 0.15
+    tank_verts = [
+        [-tank_w, 0.2, 0.2], [tank_w, 0.2, 0.2], [tank_w, 0.2+tank_h, 0.2], [-tank_w, 0.2+tank_h, 0.2],
+        [-tank_w, 0.2, tank_d], [tank_w, 0.2, tank_d], [tank_w, 0.2+tank_h, tank_d], [-tank_w, 0.2+tank_h, tank_d],
+    ]
+    tank_norms = [
+        [0,0,1], [0,0,1], [0,1,0], [0,1,0], [0,0,-1], [0,0,-1], [0,-1,0], [0,-1,0],
+    ]
+    for tv, tn in zip(tank_verts, tank_norms):
+        v.extend(tv)
+        n.extend(tn)
+        u.extend([0, 0])
+    
+    # Indices for bowl
+    for i in range(major):
+        for j in range(minor):
+            a = i * (minor+1) + j
+            b = a + minor + 1
+            idx += [a, b, a+1, b, b+1, a+1]
+    
+    # Indices for tank
+    tank_faces = [
+        (0,1,2,3), (4,7,6,5), (0,4,5,1),
+        (2,6,7,3), (0,3,7,4), (1,5,6,2),
+    ]
+    for face in tank_faces:
+        a = tank_start + face[0]
+        b = tank_start + face[1]
+        c = tank_start + face[2]
+        d = tank_start + face[3]
+        idx.extend([a,b,c, b,d,c])
+    
+    return v, n, u, idx
+
+
+def _donut(major, minor):
+    """Alias for torus (donut shape)"""
+    return _torus(major, minor)
+
+
 def _noise_tex(size):
     d = np.random.rand(size, size).astype(np.float32)
     GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RED, size, size, 0,
@@ -204,13 +266,22 @@ def _rx(a):
     return np.array([[1, 0, 0, 0], [0, c, -s, 0], [0, s, c, 0], [0, 0, 0, 1]], dtype=np.float32)
 
 
+MODEL_GENERATORS = {
+    "torus": _torus,
+    "toilet": _toilet,
+    "donut": _donut,
+}
+
+
 class GLStressWidget(QOpenGLWidget):
-    def __init__(self, quality="medium", res_w=1920, res_h=1080, parent=None):
+    def __init__(self, quality="medium", res_w=1920, res_h=1080, model="torus", parent=None):
         super().__init__(parent)
         self._cfg = QUALITY_CONFIGS.get(quality, QUALITY_CONFIGS["medium"])
         self._res_w = res_w
         self._res_h = res_h
         self._quality_label = quality
+        self._model = model if model in MODEL_GENERATORS else "torus"
+        self._model_gen = MODEL_GENERATORS[self._model]
         self._time = 0.0
         self._frame_count = 0
         self._fps = 0.0
@@ -265,7 +336,7 @@ class GLStressWidget(QOpenGLWidget):
             GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
             GL.glClearColor(0.03, 0.03, 0.05, 1.0)
 
-            verts, norms, uvs, idxs = _torus(self._cfg["major"], self._cfg["minor"])
+            verts, norms, uvs, idxs = self._model_gen(self._cfg["major"], self._cfg["minor"])
             self._index_count = len(idxs)
             nv = len(verts) // 3
             stride = 8
@@ -305,7 +376,7 @@ class GLStressWidget(QOpenGLWidget):
             _noise_tex(self._cfg["tex_size"])
 
             self._initialized = True
-            log.info("GL stress OK (%s)", self._quality_label)
+            log.info("GL stress OK (%s, %s)", self._quality_label, self._model)
         except Exception as e:
             log.error("GL init: %s", e, exc_info=True)
 
@@ -390,13 +461,13 @@ class Overlay(QWidget):
 class GLStressWindow(QMainWindow):
     closed = Signal()
 
-    def __init__(self, quality, res_w, res_h, backend, gpu_name):
+    def __init__(self, quality, res_w, res_h, backend, gpu_name, model="torus"):
         super().__init__()
-        self.setWindowTitle("GPUForge Stress Test")
+        self.setWindowTitle("GPUForge Stress Test - " + model.title())
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setCursor(Qt.BlankCursor)
 
-        self._gl = GLStressWidget(quality, res_w, res_h)
+        self._gl = GLStressWidget(quality, res_w, res_h, model)
         self._gl.set_monitoring(backend, gpu_name)
         self.setCentralWidget(self._gl)
 
@@ -404,6 +475,7 @@ class GLStressWindow(QMainWindow):
         self._res_w = res_w
         self._res_h = res_h
         self._quality_label = quality
+        self._model_name = model
         self._fps = 0.0
 
         screen = QApplication.primaryScreen()
@@ -424,7 +496,7 @@ class GLStressWindow(QMainWindow):
             f"GPU: {self._gl._gpu_name}",
             f"Temp: {self._gl._gpu_temp:.0f}C  Load: {self._gl._gpu_load:.0f}%",
             f"FPS: {self._gl._fps:.1f}",
-            f"Shaders: {self._gl._cfg['shells']}  Quality: {self._quality_label}",
+            f"Model: {self._model_name}  Quality: {self._quality_label}",
             f"{self._res_w}x{self._res_h}  |  ESC to exit",
         ])
         self._overlay.resize(self._gl.size())
