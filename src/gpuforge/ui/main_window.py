@@ -65,9 +65,21 @@ class MainWindow(QMainWindow):
         self._stack.setObjectName("contentStack")
         bl.addWidget(self._stack, 1)
 
+        self._monitor_widget = MonitorWidget(self._backend)
+        self._curve_editor = CurveEditorWidget(self._backend)
+        self._presets_widget = PresetsWidget(self._backend)
+        self._stress_test = StressTestWidget(self._backend)
+        self._game_detector = GameDetectorWidget(self._backend)
+
+        self._stack.addWidget(self._monitor_widget)   # index 0
+        self._stack.addWidget(self._curve_editor)      # index 1
+        self._stack.addWidget(self._presets_widget)   # index 2
+        self._stack.addWidget(self._stress_test)      # index 3
+        self._stack.addWidget(self._game_detector)    # index 4
+
         layout.addWidget(body, 1)
 
-        status = QLabel(f"GPUForge v1.1.0 — {_('Ready')}")
+        status = QLabel(f"GPUForge v1.1.1 — {_('Ready')}")
         status.setObjectName("statusLabel")
         status.setStyleSheet("color: #8b949e; font-size: 11px; padding: 4px 16px; background: transparent;")
         layout.addWidget(status)
