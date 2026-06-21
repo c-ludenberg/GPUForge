@@ -1,6 +1,7 @@
 import math
 import logging
 import os
+import sys
 import numpy as np
 
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
@@ -179,17 +180,26 @@ def _donut(major, minor):
     return _torus(major, minor)
 
 
+def _find_model(name):
+    try:
+        from importlib.resources import files
+        return str(files("gpuforge") / "models" / name)
+    except Exception:
+        pass
+    p = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models", name)
+    if os.path.exists(p):
+        return p
+    return None
+
+
 def _load_toilet(major, minor):
-    """Load real OBJ toilet model, ignoring major/minor params"""
-    models_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
-    obj_path = os.path.join(models_dir, "toilet.obj")
-    if not os.path.exists(obj_path):
-        log.warning("Toilet OBJ not found at %s, falling back to torus", obj_path)
-        return _torus(major, minor)
-    v, n, u, c, idx = load_obj(obj_path)
-    if not v:
-        return _torus(major, minor)
-    return v, n, u, c, idx
+    p = _find_model("toilet.obj")
+    if p and os.path.exists(p):
+        v, n, u, c, idx = load_obj(p)
+        if v:
+            return v, n, u, c, idx
+    log.warning("Toilet OBJ not found, falling back to torus")
+    return _torus(major, minor)
 
 
 def _noise_tex(size):
