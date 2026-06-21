@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 try:
     from OpenGL import GL
     HAS_OPENGL = True
-except ImportError:
+except Exception:
     HAS_OPENGL = False
 
 QUALITY_CONFIGS = {
