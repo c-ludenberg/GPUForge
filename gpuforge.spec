@@ -29,6 +29,8 @@ a = Analysis(
         'gpuforge.ui.game_detector',
         'gpuforge.ui.gl_stress',
         'trimesh',
+        'scipy',
+        'scipy.sparse',
         'OpenGL',
         'OpenGL.GL',
         'OpenGL.GLU',

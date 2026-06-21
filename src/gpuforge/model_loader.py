@@ -45,7 +45,18 @@ def load_obj(path):
         return [], [], [], [], []
 
     if isinstance(scene, trimesh.Scene):
-        meshes = list(scene.geometry.items())
+        dumped = scene.dump(apply_transforms=True)
+        meshes = [m for m in dumped if isinstance(m, trimesh.Trimesh) and len(m.vertices) > 0]
+        if not meshes:
+            return [], [], [], [], []
+        if len(meshes) > 1:
+            try:
+                mesh = trimesh.util.concatenate(meshes)
+            except Exception:
+                mesh = meshes[0]
+        else:
+            mesh = meshes[0]
+        meshes = [("merged", mesh)]
     else:
         meshes = [("default", scene)]
 
