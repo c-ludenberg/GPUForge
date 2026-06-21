@@ -193,12 +193,14 @@ def _find_model(name):
 
 
 def _load_toilet(major, minor):
-    p = _find_model("toilet.obj")
-    if p and os.path.exists(p):
-        v, n, u, c, idx = load_obj(p)
-        if v:
-            return v, n, u, c, idx
-    log.warning("Toilet OBJ not found, falling back to torus")
+    try:
+        p = _find_model("toilet.obj")
+        if p and os.path.exists(p):
+            v, n, u, c, idx = load_obj(p)
+            if v:
+                return v, n, u, c, idx
+    except Exception:
+        log.warning("Toilet OBJ load error, falling back to torus", exc_info=True)
     return _torus(major, minor)
 
 
@@ -362,14 +364,15 @@ class GLStressWidget(QOpenGLWidget):
             log.error("GL init: %s", e, exc_info=True)
 
     def paintGL(self):
+        w = max(self.width(), 1)
+        h = max(self.height(), 1)
+        dpr = self.devicePixelRatio()
+        GL.glViewport(0, 0, int(w * dpr), int(h * dpr))
+        GL.glClearColor(0.03, 0.03, 0.05, 1.0)
+        GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
         if not self._initialized:
             return
         try:
-            w = max(self.width(), 1)
-            h = max(self.height(), 1)
-            dpr = self.devicePixelRatio()
-            GL.glViewport(0, 0, int(w * dpr), int(h * dpr))
-            GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
 
             aspect = w / h
             rot = self._time * 0.4
