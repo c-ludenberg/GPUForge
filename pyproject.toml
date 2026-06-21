@@ -24,5 +24,6 @@ gpuforge = "gpuforge.main:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.setuptools.package_data]
-gpuforge = ["models/*"]
+[tool.setuptools]
+include-package-data = true
+package-data = {"gpuforge" = ["models/*"]}

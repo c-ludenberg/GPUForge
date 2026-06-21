@@ -11,10 +11,13 @@ a = Analysis(
     datas=[
         ('src/gpuforge/resources/style.qss', 'gpuforge/resources'),
         ('src/gpuforge/locale/pl/LC_MESSAGES/gpuforge.mo', 'gpuforge/locale/pl/LC_MESSAGES'),
+        ('src/gpuforge/models/*.obj', 'gpuforge/models'),
+        ('src/gpuforge/models/*.3ds', 'gpuforge/models'),
     ],
     hiddenimports=[
         'gpuforge',
         'gpuforge.main',
+        'gpuforge.model_loader',
         'gpuforge.backend.gpu_base',
         'gpuforge.backend.nvidia_backend',
         'gpuforge.backend.amd_backend',
@@ -25,6 +28,7 @@ a = Analysis(
         'gpuforge.ui.stress_test',
         'gpuforge.ui.game_detector',
         'gpuforge.ui.gl_stress',
+        'trimesh',
         'OpenGL',
         'OpenGL.GL',
         'OpenGL.GLU',
