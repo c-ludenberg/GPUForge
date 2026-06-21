@@ -25,7 +25,6 @@ a = Analysis(
         'gpuforge.ui.stress_test',
         'gpuforge.ui.game_detector',
         'gpu_stress',
-        'gpu_stress.core',
         'cmdkit',
         'torch',
         'numpy',
