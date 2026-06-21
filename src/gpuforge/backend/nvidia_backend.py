@@ -86,6 +86,24 @@ class NVIDIABackend(GPUBackend):
         except Exception:
             pass
 
+        # Hotspot via nvmlDeviceGetThermalSettings (available on modern GPUs)
+        try:
+            ts = self._pynvml.nvmlDeviceGetThermalSettings(handle, 0)
+            # sensor[2] is typically hotspot on Ampere+ GPUs
+            if len(ts) >= 3:
+                s.temp_hotspot = float(ts[2].currentTemp)
+        except Exception:
+            pass
+
+        if s.temp_hotspot == 0.0:
+            try:
+                out = _run_nvidia_smi("-i", str(index), "--query-gpu=temperature.hotspot", "--format=csv,nounits")
+                val = float(out.strip().split("\n")[-1])
+                if 0 < val < 200:
+                    s.temp_hotspot = val
+            except Exception:
+                pass
+
         try:
             util = self._pynvml.nvmlDeviceGetUtilizationRates(handle)
             s.utilization_pct = float(util.gpu)

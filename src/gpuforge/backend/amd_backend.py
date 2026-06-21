@@ -79,11 +79,11 @@ class AMDBackend(GPUBackend):
                 label_file = sensor.replace("_input", "_label")
                 label = _read_sysfs(label_file) or ""
                 val = _read_sysfs(sensor)
-                if val and label == "edge":
+                if val and label.lower() == "edge":
                     s.temp_core = int(val) / 1000.0
-                elif val and label == "junction":
+                elif val and label.lower() in ("junction", "hotspot", "tjunction"):
                     s.temp_hotspot = int(val) / 1000.0
-                elif val and label == "mem":
+                elif val and label.lower() in ("mem", "memory", "vram"):
                     s.temp_mem = int(val) / 1000.0
 
             fan_input = os.path.join(hwmon, "fan1_input")
