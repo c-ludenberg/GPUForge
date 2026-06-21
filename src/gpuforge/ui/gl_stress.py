@@ -364,6 +364,8 @@ class GLStressWidget(QOpenGLWidget):
             log.error("GL init: %s", e, exc_info=True)
 
     def paintGL(self):
+        if not HAS_OPENGL:
+            return
         w = max(self.width(), 1)
         h = max(self.height(), 1)
         dpr = self.devicePixelRatio()
