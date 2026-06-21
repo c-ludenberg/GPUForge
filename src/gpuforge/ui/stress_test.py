@@ -1,24 +1,62 @@
 import logging
+import multiprocessing
+import queue
+import io
+import sys
+import time
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout,
-    QFrame, QComboBox, QMessageBox,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QFrame, QSpinBox, QTextEdit,
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 
 from gettext import gettext as _
 
 from gpuforge.backend.gpu_base import GPUBackend
-from gpuforge.ui.gl_stress import GLStressWindow, RESOLUTIONS, QUALITY_CONFIGS, MODEL_GENERATORS
 
 log = logging.getLogger(__name__)
 
+# Module-level worker function for multiprocessing (required for PyInstaller compat)
+def _stress_worker(duration: int, matrix_size: int, q):
+    import sys as _sys
+    from gpu_stress import GPUStress
+
+    old_out = _sys.stdout
+    _sys.stdout = io.StringIO()
+
+    try:
+        app = GPUStress(["-t", f"{duration}s", "-s", str(matrix_size)])
+        app.run()
+    except SystemExit:
+        pass
+    except Exception as e:
+        print(f"FATAL: {e}", file=old_out)
+
+    output = _sys.stdout.getvalue()
+    _sys.stdout = old_out
+    q.put(output)
+    q.put(None)  # sentinel
+
 
 class StressTestWidget(QWidget):
+    closed = Signal()
+
     def __init__(self, backend: GPUBackend, parent=None):
         super().__init__(parent)
         self._backend = backend
-        self._stress_window = None
+        self._process = None
+        self._running = False
+        self._queue = None
+        self._gpu_name = ""
+
+        try:
+            info = self._backend.get_gpu_info(0)
+            self._gpu_name = info.name
+        except Exception:
+            pass
+
+        self._ctx = multiprocessing.get_context("spawn")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -30,9 +68,8 @@ class StressTestWidget(QWidget):
         layout.addWidget(title)
 
         desc = QLabel(_(
-            "Launch a fullscreen FurMark-style GPU stress test.\n"
-            "Renders a furry 3D torus with configurable shader complexity.\n"
-            "Monitor temps and FPS in the overlay during the test."
+            "Runs a GPU compute stress test using gpu-stress (PyTorch).\n"
+            "Matrix multiplication loop — maxes out GPU compute."
         ))
         desc.setStyleSheet("color: #8b949e; font-size: 12px;")
         desc.setWordWrap(True)
@@ -48,120 +85,171 @@ class StressTestWidget(QWidget):
         cl = QVBoxLayout(config_frame)
         cl.setSpacing(10)
 
-        res_row = QHBoxLayout()
-        res_row.addWidget(QLabel(_("Resolution:")))
-        self._res_combo = QComboBox()
-        self._res_combo.addItems(RESOLUTIONS)
-        self._res_combo.setCurrentText("1920x1080")
-        res_row.addWidget(self._res_combo)
-        res_row.addStretch()
-        cl.addLayout(res_row)
+        dur_row = QHBoxLayout()
+        dur_row.addWidget(QLabel(_("Duration (seconds):")))
+        self._duration = QSpinBox()
+        self._duration.setRange(10, 3600)
+        self._duration.setValue(60)
+        self._duration.setSuffix(" s")
+        dur_row.addWidget(self._duration)
+        dur_row.addStretch()
+        cl.addLayout(dur_row)
 
-        qual_row = QHBoxLayout()
-        qual_row.addWidget(QLabel(_("Quality:")))
-        self._qual_combo = QComboBox()
-        for k in ["low", "medium", "high", "ultra"]:
-            cfg = QUALITY_CONFIGS[k]
-            label = f"{k.capitalize()}  ({cfg['shells']} shells, {cfg['major']}×{cfg['minor']} segments)"
-            self._qual_combo.addItem(label, k)
-        self._qual_combo.setCurrentIndex(1)
-        qual_row.addWidget(self._qual_combo)
-        qual_row.addStretch()
-        cl.addLayout(qual_row)
+        size_row = QHBoxLayout()
+        size_row.addWidget(QLabel(_("Matrix size:")))
+        self._matrix_size = QSpinBox()
+        self._matrix_size.setRange(1000, 50000)
+        self._matrix_size.setValue(10000)
+        self._matrix_size.setSingleStep(1000)
+        size_row.addWidget(self._matrix_size)
+        size_row.addStretch()
+        cl.addLayout(size_row)
 
-        model_row = QHBoxLayout()
-        model_row.addWidget(QLabel(_("Model:")))
-        self._model_combo = QComboBox()
-        model_names = {"torus": "Torus (furry donut)", "donut": "Donut", "toilet": "Toilet (OBJ)"}
-        for m, label in model_names.items():
-            self._model_combo.addItem(label, m)
-        self._model_combo.setCurrentIndex(0)
-        model_row.addWidget(self._model_combo)
-        model_row.addStretch()
-        cl.addLayout(model_row)
-
-        warn = QLabel(_(
-            "⚠ This will run fullscreen. Press ESC to exit. "
-            "Monitor your GPU temperatures closely."
-        ))
-        warn.setStyleSheet("color: #d29922; font-size: 11px; background: transparent;")
-        warn.setWordWrap(True)
-        cl.addWidget(warn)
+        self._gpu_label = QLabel(_("GPU: {}").format(self._gpu_name or _("Unknown")))
+        self._gpu_label.setStyleSheet("color: #8b949e; font-size: 12px; background: transparent;")
+        cl.addWidget(self._gpu_label)
 
         layout.addWidget(config_frame)
 
-        self._btn = QPushButton(f"▶  {_('Launch Stress Test')}")
-        self._btn.setObjectName("primaryButton")
-        self._btn.setStyleSheet("""
+        btn_row = QHBoxLayout()
+        self._start_btn = QPushButton(f"\u25b6  {_('Start Stress Test')}")
+        self._start_btn.setObjectName("primaryButton")
+        self._start_btn.setStyleSheet("""
             QPushButton { background-color: #1a7f37; border: 1px solid #2ea043;
                           color: white; border-radius: 8px; padding: 10px 20px;
                           font-size: 14px; font-weight: 600; }
             QPushButton:hover { background-color: #238636; }
+            QPushButton:disabled { background-color: #2d333b; border-color: #444c56; color: #6e7681; }
         """)
-        self._btn.clicked.connect(self._launch)
-        layout.addWidget(self._btn)
+        self._start_btn.clicked.connect(self._toggle)
+        btn_row.addWidget(self._start_btn)
+
+        self._stop_btn = QPushButton(f"\u25a0  {_('Stop')}")
+        self._stop_btn.setObjectName("dangerButton")
+        self._stop_btn.setStyleSheet("""
+            QPushButton { background-color: #da3633; border: 1px solid #f85149;
+                          color: white; border-radius: 8px; padding: 10px 20px;
+                          font-size: 14px; font-weight: 600; }
+            QPushButton:hover { background-color: #b62324; }
+            QPushButton:disabled { background-color: #2d333b; border-color: #444c56; color: #6e7681; }
+        """)
+        self._stop_btn.clicked.connect(self._stop)
+        self._stop_btn.setEnabled(False)
+        btn_row.addWidget(self._stop_btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
 
         self._status = QLabel(_("Ready"))
         self._status.setStyleSheet("font-weight: 600; font-size: 14px; color: #8b949e;")
         layout.addWidget(self._status)
 
         self._stats = QLabel()
-        self._stats.setStyleSheet("color: #8b949e; font-size: 12px;")
-        self._stats.setWordWrap(True)
+        self._stats.setStyleSheet("color: #58a6ff; font-size: 13px;")
         layout.addWidget(self._stats)
 
-        layout.addStretch()
-
-    def _launch(self):
-        if self._stress_window is not None:
-            return
-
-        res_text = self._res_combo.currentText()
-        res_w, res_h = map(int, res_text.split("x"))
-        quality = self._qual_combo.currentData()
-        model = self._model_combo.currentData()
-
-        try:
-            gpu_info = self._backend.get_gpu_info(0)
-            gpu_name = gpu_info.name
-        except Exception:
-            gpu_name = ""
-
-        log.info("Launching GL stress test: %s %s %s", quality, res_text, model)
-        self._stress_window = GLStressWindow(quality, res_w, res_h, self._backend, gpu_name, model)
-        self._stress_window.closed.connect(self._on_closed)
-
-        self._btn.setEnabled(False)
-        self._btn.setText(_("Running..."))
-        self._status.setText(_("Stress test running — press ESC to exit"))
+        self._output = QTextEdit()
+        self._output.setReadOnly(True)
+        self._output.setStyleSheet("""
+            QTextEdit { background-color: #0d1117; color: #c9d1d9;
+                        border: 1px solid #21262d; border-radius: 6px;
+                        font-family: 'Consolas', 'Courier New', monospace;
+                        font-size: 11px; padding: 8px; }
+        """)
+        self._output.setMaximumHeight(200)
+        layout.addWidget(self._output)
 
         self._poll_timer = QTimer()
         self._poll_timer.timeout.connect(self._poll_stats)
         self._poll_timer.start(1000)
 
-    def _poll_stats(self):
-        if self._stress_window is None:
+        self._output_timer = QTimer()
+        self._output_timer.timeout.connect(self._poll_queue)
+        self._output_timer.start(200)
+
+        layout.addStretch()
+
+    def _toggle(self):
+        if self._running:
+            self._stop()
+        else:
+            self._start()
+
+    def _start(self):
+        duration = self._duration.value()
+        matrix_size = self._matrix_size.value()
+
+        self._output.clear()
+        self._output.append(_("Starting GPU stress test..."))
+        self._output.append(_("Duration: {}s  |  Matrix size: {}x{}").format(duration, matrix_size, matrix_size))
+
+        self._queue = multiprocessing.Queue()
+        self._process = self._ctx.Process(
+            target=_stress_worker,
+            args=(duration, matrix_size, self._queue),
+        )
+        self._process.start()
+
+        self._running = True
+        self._start_btn.setEnabled(False)
+        self._stop_btn.setEnabled(True)
+        self._status.setText(_("Stress test running..."))
+        self._status.setStyleSheet("font-weight: 600; font-size: 14px; color: #d29922;")
+
+    def _poll_queue(self):
+        if not self._running or self._queue is None:
             return
-        fps = self._stress_window.fps
+        try:
+            while True:
+                msg = self._queue.get_nowait()
+                if msg is None:
+                    self._on_finished()
+                    return
+                if isinstance(msg, str) and msg.strip():
+                    for line in msg.strip().splitlines():
+                        self._output.append(line)
+        except queue.Empty:
+            pass
+
+    def _on_finished(self):
+        self._running = False
+        self._start_btn.setEnabled(True)
+        self._stop_btn.setEnabled(False)
+        exit_code = self._process.exitcode if self._process else 0
+        if exit_code == 0:
+            self._status.setText(_("Stress test completed"))
+            self._status.setStyleSheet("font-weight: 600; font-size: 14px; color: #3fb950;")
+        else:
+            self._status.setText(_("Stress test failed (code {})").format(exit_code or 0))
+            self._status.setStyleSheet("font-weight: 600; font-size: 14px; color: #f85149;")
+        self._process = None
+        self._queue = None
+
+    def _stop(self):
+        if self._process and self._process.is_alive():
+            self._process.terminate()
+            self._process.join(timeout=5)
+            self._output.append(_("Stress test stopped by user"))
+        self._running = False
+        self._start_btn.setEnabled(True)
+        self._stop_btn.setEnabled(False)
+        self._status.setText(_("Stopped"))
+        self._status.setStyleSheet("font-weight: 600; font-size: 14px; color: #8b949e;")
+        self._process = None
+        self._queue = None
+
+    def _poll_stats(self):
+        if not self._running:
+            return
         try:
             s = self._backend.get_sensors(0)
             extra = ""
             if s.temp_hotspot > 0:
-                extra += f"  {_('Hotspot')}: {s.temp_hotspot:.0f}°C"
+                extra += f"  {_('Hotspot')}: {s.temp_hotspot:.0f}C"
             if s.temp_mem > 0:
-                extra += f"  {_('VRAM')}: {s.temp_mem:.0f}°C"
-            text = _("FPS: {:.0f}  |  Temp: {:.0f}°C{}  |  Load: {:.0f}%").format(
-                fps, s.temp_core, extra, s.utilization_pct
+                extra += f"  {_('VRAM')}: {s.temp_mem:.0f}C"
+            text = _("Temp: {:.0f}C{}  |  Load: {:.0f}%  |  Power: {:.1f}W").format(
+                s.temp_core, extra, s.utilization_pct, s.power_watts
             )
             self._stats.setText(text)
         except Exception:
-            self._stats.setText(_("FPS: {:.0f}").format(fps))
-
-    def _on_closed(self):
-        self._stress_window = None
-        self._btn.setEnabled(True)
-        self._btn.setText(f"▶  {_('Launch Stress Test')}")
-        self._status.setText(_("Ready"))
-        self._stats.setText("")
-        if hasattr(self, "_poll_timer"):
-            self._poll_timer.stop()
+            pass

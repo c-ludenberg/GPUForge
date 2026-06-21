@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gpuforge"
-version = "1.3.0"
+version = "1.4.0"
 description = "Cross-platform GPU undervolt and overclocking tool"
 requires-python = ">=3.11"
 license = {text = "GPL-3.0-only"}
@@ -14,9 +14,7 @@ dependencies = [
     "nvidia-ml-py>=12.0.0",
     "psutil>=5.9.0",
     "platformdirs>=4.0.0",
-    "PyOpenGL>=3.1.7",
-    "trimesh>=4.0.0",
-    "scipy>=1.11.0",
+    "gpu-stress>=1.0.0",
 ]
 
 [project.scripts]
@@ -27,4 +25,3 @@ where = ["src"]
 
 [tool.setuptools]
 include-package-data = true
-package-data = {"gpuforge" = ["models/*"]}
