@@ -145,11 +145,15 @@ class StressTestWidget(QWidget):
         fps = self._stress_window.fps
         try:
             s = self._backend.get_sensors(0)
-            self._stats.setText(
-                _("FPS: {:.0f}  |  Temp: {:.0f}°C  |  Load: {:.0f}%").format(
-                    fps, s.temp_core, s.utilization_pct
-                )
+            extra = ""
+            if s.temp_hotspot > 0:
+                extra += f"  {_('Hotspot')}: {s.temp_hotspot:.0f}°C"
+            if s.temp_mem > 0:
+                extra += f"  {_('VRAM')}: {s.temp_mem:.0f}°C"
+            text = _("FPS: {:.0f}  |  Temp: {:.0f}°C{}  |  Load: {:.0f}%").format(
+                fps, s.temp_core, extra, s.utilization_pct
             )
+            self._stats.setText(text)
         except Exception:
             self._stats.setText(_("FPS: {:.0f}").format(fps))
 

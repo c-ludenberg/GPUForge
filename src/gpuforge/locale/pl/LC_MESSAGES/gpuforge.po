@@ -222,9 +222,27 @@ msgstr "Eksport profilu MSI Afterburner"
 #: src/gpuforge/ui/presets.py
 msgid "Exported"
 msgstr "Wyeksportowano"
+
+#: src/gpuforge/ui/presets.py
 msgid "MSI AB: %s"
 msgstr "MSI AB: %s"
+
+#: src/gpuforge/ui/presets.py
 msgid "Profiles folder"
 msgstr "Folder profili"
+
+#: src/gpuforge/ui/monitor_widget.py
 msgid "Model:"
 msgstr "Model:"
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "Hotspot"
+msgstr "Hotspot"
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "VRAM Temp"
+msgstr "Temp. VRAM"
+
+#: src/gpuforge/ui/stress_test.py
+msgid "VRAM"
+msgstr "VRAM"

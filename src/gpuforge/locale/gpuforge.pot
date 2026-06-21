@@ -216,4 +216,15 @@ msgstr ""
 #: src/gpuforge/ui/main_window.py
 msgid "Language changed to {}.\nRestart GPUForge to apply."
 msgstr ""
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "Hotspot"
+msgstr ""
+
+#: src/gpuforge/ui/monitor_widget.py
+msgid "VRAM Temp"
+msgstr ""
+
+#: src/gpuforge/ui/stress_test.py
+msgid "VRAM"
 msgstr ""

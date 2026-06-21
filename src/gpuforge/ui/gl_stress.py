@@ -419,6 +419,8 @@ class GLStressWidget(QOpenGLWidget):
         self._fps = 0.0
         self._fps_timer = 0.0
         self._gpu_temp = 0.0
+        self._gpu_temp_hotspot = 0.0
+        self._gpu_temp_mem = 0.0
         self._gpu_name = ""
         self._gpu_load = 0.0
         self._backend = None
@@ -453,6 +455,8 @@ class GLStressWidget(QOpenGLWidget):
             try:
                 s = self._backend.get_sensors(0)
                 self._gpu_temp = s.temp_core
+                self._gpu_temp_hotspot = s.temp_hotspot
+                self._gpu_temp_mem = s.temp_mem
                 self._gpu_load = s.utilization_pct
             except Exception:
                 pass
@@ -624,9 +628,11 @@ class GLStressWindow(QMainWindow):
         self._info.start(250)
 
     def _update_overlay(self):
+        hotspot = f"  Hotspot: {self._gl._gpu_temp_hotspot:.0f}C" if self._gl._gpu_temp_hotspot > 0 else ""
+        mem_t = f"  VRAM: {self._gl._gpu_temp_mem:.0f}C" if self._gl._gpu_temp_mem > 0 else ""
         self._overlay.set_lines([
             f"GPU: {self._gl._gpu_name}",
-            f"Temp: {self._gl._gpu_temp:.0f}C  Load: {self._gl._gpu_load:.0f}%",
+            f"Temp: {self._gl._gpu_temp:.0f}C{hotspot}{mem_t}  Load: {self._gl._gpu_load:.0f}%",
             f"FPS: {self._gl._fps:.1f}",
             f"Model: {self._model_name}  Quality: {self._quality_label}",
             f"{self._res_w}x{self._res_h}  |  ESC to exit",

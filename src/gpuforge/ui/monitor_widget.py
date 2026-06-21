@@ -157,20 +157,26 @@ class MonitorWidget(QWidget):
         self._temp = SensorCard(_("GPU Temp"), "°C", "#f85149")
         tiles.addWidget(self._temp, 0, 0)
 
+        self._hotspot = SensorCard(_("Hotspot"), "°C", "#ff7b72")
+        tiles.addWidget(self._hotspot, 0, 1)
+
+        self._temp_mem = SensorCard(_("VRAM Temp"), "°C", "#f0883e")
+        tiles.addWidget(self._temp_mem, 0, 2)
+
         self._clock = SensorCard(_("GPU Clock"), "MHz", "#58a6ff")
-        tiles.addWidget(self._clock, 0, 1)
+        tiles.addWidget(self._clock, 0, 3)
 
         self._mem = SensorCard(_("Memory"), "MHz", "#d2a8ff")
-        tiles.addWidget(self._mem, 0, 2)
+        tiles.addWidget(self._mem, 0, 4)
 
         self._power = SensorCard(_("Power"), "W", "#d29922")
-        tiles.addWidget(self._power, 0, 3)
+        tiles.addWidget(self._power, 1, 0)
 
         self._fan = SensorCard(_("Fan"), "%", "#79c0ff")
-        tiles.addWidget(self._fan, 0, 4)
+        tiles.addWidget(self._fan, 1, 1)
 
         self._util = SensorCard(_("Util"), "%", "#3fb950")
-        tiles.addWidget(self._util, 0, 5)
+        tiles.addWidget(self._util, 1, 2)
 
         layout.addLayout(tiles)
 
@@ -188,10 +194,17 @@ class MonitorWidget(QWidget):
 
         layout.addLayout(graphs, 1)
 
-        self._data = {"temps": [], "clocks": [], "powers": []}
+        self._data = {"temps": [], "hotspots": [], "temps_mem": [], "clocks": [], "powers": []}
         self._timer = QTimer()
         self._timer.timeout.connect(self._poll)
         self._timer.start(500)
+
+    def _temp_color(self, temp: float) -> str:
+        if temp < 60:
+            return "#3fb950"
+        if temp < 80:
+            return "#d29922"
+        return "#f85149"
 
     def _poll(self):
         try:
@@ -200,6 +213,18 @@ class MonitorWidget(QWidget):
             return
 
         self._temp.set_value(sensors.temp_core)
+        self._hotspot.set_value(sensors.temp_hotspot)
+        self._temp_mem.set_value(sensors.temp_mem)
+
+        temp_pct = min(sensors.temp_core / 100.0 * 100, 100)
+        self._temp._bar.setValue(int(temp_pct))
+        self._temp._bar.setStyleSheet(f"""
+            QProgressBar::chunk {{
+                background: {self._temp_color(sensors.temp_core)};
+                border-radius: 2px;
+            }}
+        """)
+
         self._clock.set_value(sensors.gpu_clock)
         self._mem.set_value(sensors.mem_clock)
         self._power.set_value(sensors.power_watts,
@@ -208,6 +233,8 @@ class MonitorWidget(QWidget):
         self._util.set_value(sensors.utilization_pct, bar_pct=sensors.utilization_pct)
 
         self._data["temps"].append(sensors.temp_core)
+        self._data["hotspots"].append(sensors.temp_hotspot)
+        self._data["temps_mem"].append(sensors.temp_mem)
         self._data["clocks"].append(sensors.gpu_clock)
         self._data["powers"].append(sensors.power_watts)
         if len(self._data["temps"]) > 200:
