@@ -72,7 +72,7 @@ def setup_i18n(lang_code: str = None):
 
     try:
         trans = gettext.translation("gpuforge", locale_dir, [lang_code], fallback=True)
-        trans.install()
+        trans.install(names=["gettext"])
     except Exception:
         gettext.install("gpuforge", locale_dir, fallback=True)
 
