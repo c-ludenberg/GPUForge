@@ -72,7 +72,7 @@ class StressTestWidget(QWidget):
         model_row = QHBoxLayout()
         model_row.addWidget(QLabel(_("Model:")))
         self._model_combo = QComboBox()
-        model_names = {"torus": "Torus (furry donut)", "donut": "Donut", "toilet": "🚽 Toilet"}
+        model_names = {"torus": "Torus (furry donut)", "donut": "Donut", "toilet": "Toilet (OBJ)"}
         for m, label in model_names.items():
             self._model_combo.addItem(label, m)
         self._model_combo.setCurrentIndex(0)

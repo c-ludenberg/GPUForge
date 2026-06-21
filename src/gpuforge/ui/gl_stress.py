@@ -1,5 +1,6 @@
 import math
 import logging
+import os
 import numpy as np
 
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
@@ -8,6 +9,8 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFont, QPainter, QColor
 
 from gettext import gettext as _
+
+from gpuforge.model_loader import load_obj
 
 log = logging.getLogger(__name__)
 
@@ -34,18 +37,21 @@ V_SRC = """
 layout(location = 0) in vec3 a_pos;
 layout(location = 1) in vec3 a_norm;
 layout(location = 2) in vec2 a_uv;
+layout(location = 3) in vec3 a_col;
 uniform mat4 u_mvp;
 uniform float u_shell;
 uniform float u_shells;
 uniform float u_fur_len;
 out vec3 v_norm;
 out vec2 v_uv;
+out vec3 v_col;
 out float v_alpha;
 void main() {
     float layer = u_shell / u_shells;
     vec3 pos = a_pos + a_norm * u_fur_len * layer;
     v_norm = a_norm;
     v_uv = a_uv;
+    v_col = a_col;
     v_alpha = 1.0 - layer;
     gl_Position = u_mvp * vec4(pos, 1.0);
 }
@@ -55,9 +61,9 @@ F_SRC = """
 #version 330 core
 in vec3 v_norm;
 in vec2 v_uv;
+in vec3 v_col;
 in float v_alpha;
 uniform sampler2D u_noise;
-uniform vec3 u_color;
 uniform vec3 u_light;
 uniform float u_gloss;
 out vec4 out_color;
@@ -71,10 +77,10 @@ void main() {
     vec3 L = normalize(u_light);
     float diff = max(dot(N, L), 0.0);
     float amb = 0.25;
-    vec3 c = u_color * (diff * 0.6 + amb) + 0.08;
+    vec3 c = v_col * (diff * 0.6 + amb) + 0.08;
     vec3 V = vec3(0.0, 0.0, 1.0);
     float rim = 1.0 - max(dot(N, V), 0.0);
-    c += u_color * 0.3 * pow(rim, 4.0) * a;
+    c += v_col * 0.3 * pow(rim, 4.0) * a;
     out_color = vec4(c, a);
 }
 """
@@ -84,12 +90,15 @@ B_V_SRC = """
 layout(location = 0) in vec3 a_pos;
 layout(location = 1) in vec3 a_norm;
 layout(location = 2) in vec2 a_uv;
+layout(location = 3) in vec3 a_col;
 uniform mat4 u_mvp;
 out vec3 v_norm;
 out vec2 v_uv;
+out vec3 v_col;
 void main() {
     v_norm = a_norm;
     v_uv = a_uv;
+    v_col = a_col;
     gl_Position = u_mvp * vec4(a_pos, 1.0);
 }
 """
@@ -98,7 +107,7 @@ B_F_SRC = """
 #version 330 core
 in vec3 v_norm;
 in vec2 v_uv;
-uniform vec3 u_color;
+in vec3 v_col;
 uniform vec3 u_light;
 uniform float u_gloss;
 out vec4 out_color;
@@ -110,7 +119,7 @@ void main() {
     vec3 V = vec3(0.0, 0.0, 1.0);
     vec3 H = normalize(L + V);
     float spec = pow(max(dot(N, H), 0.0), 32.0) * u_gloss;
-    vec3 c = u_color * (diff * 0.7 + amb) + vec3(1.0) * spec * 0.5 + 0.05;
+    vec3 c = v_col * (diff * 0.7 + amb) + vec3(1.0) * spec * 0.5 + 0.05;
     out_color = vec4(c, 1.0);
 }
 """
@@ -149,215 +158,38 @@ def _torus(major, minor):
             cp, sp = math.cos(p), math.sin(p)
             r, R = 0.25, 0.80
             v += [(R + r*cp)*ct, r*sp, (R + r*cp)*st]
-            # Normal: radial direction from torus center axis
             nx, ny, nz = cp*ct, sp, cp*st
-            # Normalize to avoid zero vectors at seams
             len_n = math.sqrt(nx*nx + ny*ny + nz*nz)
             if len_n > 1e-8:
                 n += [nx/len_n, ny/len_n, nz/len_n]
             else:
-                n += [0.0, 1.0, 0.0]  # fallback
+                n += [0.0, 1.0, 0.0]
             u += [i/major, j/minor]
     for i in range(major):
         for j in range(minor):
             a = i * (minor+1) + j
             b = a + minor + 1
             idx += [a, b, a+1, b, b+1, a+1]
-    return v, n, u, idx
-
-
-def _toilet(major, minor):
-    """Generate a detailed realistic toilet - bowl, tank, seat, lid, flush handle"""
-    v, n, u, idx = [], [], [], []
-    
-    # === BOWL (main ceramic part) ===
-    bowl_start = 0
-    for i in range(major + 1):
-        theta = 2.0 * math.pi * i / major
-        ct, st = math.cos(theta), math.sin(theta)
-        for j in range(minor + 1):
-            phi = math.pi * j / minor
-            cp, sp = math.cos(phi), math.sin(phi)
-            # Bowl shape - oval with curve
-            bowl_w = 0.30 + 0.14 * cp
-            bowl_h = -0.28 + 0.48 * sp
-            # Add some thickness variation for realism
-            if j < minor * 0.3:
-                bowl_w *= 0.95 + 0.05 * (j / (minor * 0.3))
-            v += [bowl_w * ct, bowl_h, bowl_w * st * 0.68]
-            nx, ny, nz = cp * ct, sp, cp * st
-            ln = math.sqrt(nx*nx + ny*ny + nz*nz)
-            n += [nx/ln, ny/ln, nz/ln] if ln > 1e-8 else [0, 1, 0]
-            u += [i/major, j/minor]
-    
-    # === BOWL INNER (hollow part) ===
-    inner_start = len(v) // 3
-    for i in range(major + 1):
-        theta = 2.0 * math.pi * i / major
-        ct, st = math.cos(theta), math.sin(theta)
-        for j in range(minor + 1):
-            phi = math.pi * j / minor
-            cp, sp = math.cos(phi), math.sin(phi)
-            bowl_w = 0.24 + 0.11 * cp
-            bowl_h = -0.24 + 0.44 * sp
-            v += [bowl_w * ct, bowl_h, bowl_w * st * 0.64]
-            nx, ny, nz = -cp * ct, -sp, -cp * st
-            ln = math.sqrt(nx*nx + ny*ny + nz*nz)
-            n += [nx/ln, ny/ln, nz/ln] if ln > 1e-8 else [0, -1, 0]
-            u += [i/major, j/minor]
-    
-    # === TANK (water tank on back) ===
-    tank_start = len(v) // 3
-    tw, th, td = 0.30, 0.50, 0.20
-    ty, tz = 0.18, 0.40
-    
-    # Tank vertices (6 faces)
-    tank_box = [
-        # Front
-        [[-tw, ty, tz], [tw, ty, tz], [tw, ty+th, tz], [-tw, ty+th, tz]],
-        # Back  
-        [[-tw, ty, tz+td], [tw, ty, tz+td], [tw, ty+th, tz+td], [-tw, ty+th, tz+td]],
-        # Top
-        [[-tw, ty+th, tz], [tw, ty+th, tz], [tw, ty+th, tz+td], [-tw, ty+th, tz+td]],
-        # Bottom
-        [[-tw, ty, tz], [tw, ty, tz], [tw, ty, tz+td], [-tw, ty, tz+td]],
-        # Left
-        [[-tw, ty, tz], [-tw, ty, tz+td], [-tw, ty+th, tz+td], [-tw, ty+th, tz]],
-        # Right
-        [[tw, ty, tz], [tw, ty, tz+td], [tw, ty+th, tz+td], [tw, ty+th, tz]],
-    ]
-    tank_normals = [[0,0,1], [0,0,-1], [0,1,0], [0,-1,0], [-1,0,0], [1,0,0]]
-    
-    for face_idx, (face, norm) in enumerate(zip(tank_box, tank_normals)):
-        for tv in face:
-            v.extend(tv)
-            n.extend(norm)
-            u.extend([0, 0])
-    
-    # === TANK LID ===
-    lid_start = len(v) // 3
-    lid_y = ty + th
-    lid_verts = [
-        [-tw, lid_y, tz], [tw, lid_y, tz], [tw, lid_y, tz+td], [-tw, lid_y, tz+td]
-    ]
-    for lv in lid_verts:
-        v.extend(lv)
-        n.extend([0, 1, 0])
-        u.extend([0, 0])
-    
-    # === SEAT (oval ring) ===
-    seat_start = len(v) // 3
-    seat_r = 0.35
-    for i in range(major + 1):
-        theta = 2.0 * math.pi * i / major
-        ct, st = math.cos(theta), math.sin(theta)
-        # Outer ring
-        v += [seat_r * ct, 0.025, seat_r * st * 0.70]
-        n += [0, 1, 0]
-        u += [i/major, 0]
-        # Inner ring (hole)
-        v += [seat_r * ct * 0.72, 0.025, seat_r * st * 0.52]
-        n += [0, 1, 0]
-        u += [i/major, 1]
-    
-    # === LID (seat cover, angled up) ===
-    lid2_start = len(v) // 3
-    for i in range(major + 1):
-        theta = 2.0 * math.pi * i / major
-        ct, st = math.cos(theta), math.sin(theta)
-        # Lid outer
-        v += [seat_r * ct * 0.68, 0.035 + i * 0.001, seat_r * st * 0.48]
-        n += [0.05, 0.995, 0.05]
-        u += [i/major, 0]
-        # Lid inner
-        v += [seat_r * ct * 0.50, 0.035 + i * 0.001, seat_r * st * 0.36]
-        n += [0.05, 0.995, 0.05]
-        u += [i/major, 1]
-    
-    # === FLUSH HANDLE ===
-    handle_start = len(v) // 3
-    hw, hh = 0.04, 0.08
-    hx, hy, hz = tw - 0.02, ty + th - 0.05, tz + td + 0.03
-    handle_verts = [
-        [hx, hy, hz], [hx+hw, hy, hz], [hx+hw, hy+hh, hz], [hx, hy+hh, hz]
-    ]
-    for hv in handle_verts:
-        v.extend(hv)
-        n.extend([1, 0, 0])
-        u.extend([0, 0])
-    
-    # === BASE/PEDESTAL ===
-    base_start = len(v) // 3
-    bw, bh = 0.25, 0.15
-    base_verts = [
-        [-bw, -0.35, 0.15], [bw, -0.35, 0.15], [bw, -0.35+bh, 0.15], [-bw, -0.35+bh, 0.15],
-        [-bw, -0.35, 0.55], [bw, -0.35, 0.55], [bw, -0.35+bh, 0.55], [-bw, -0.35+bh, 0.55],
-    ]
-    base_norms = [[0,0,1], [0,0,1], [0,1,0], [0,-1,0], [-1,0,0], [1,0,0], [0,0,-1], [0,0,-1]]
-    for bv, bn in zip(base_verts, base_norms):
-        v.extend(bv)
-        n.extend(bn)
-        u.extend([0, 0])
-    
-    # === INDICES ===
-    # Bowl outer
-    for i in range(major):
-        for j in range(minor):
-            a = i * (minor+1) + j
-            b = a + minor + 1
-            idx += [a, b, a+1, b, b+1, a+1]
-    
-    # Bowl inner
-    for i in range(major):
-        for j in range(minor):
-            a = inner_start + i * (minor+1) + j
-            b = a + minor + 1
-            idx += [a, b, a+1, b, b+1, a+1]
-    
-    # Tank faces
-    for face in [[0,1,2,3], [4,7,6,5], [0,4,5,1], [2,6,7,3], [0,3,7,4], [1,5,6,2]]:
-        a = tank_start + face[0]
-        b = tank_start + face[1]
-        c = tank_start + face[2]
-        d = tank_start + face[3]
-        idx.extend([a,b,c, b,d,c])
-    
-    # Lid
-    idx.extend([lid_start, lid_start+1, lid_start+2, lid_start+1, lid_start+3, lid_start+2])
-    
-    # Seat ring
-    for i in range(major):
-        a = seat_start + i * 2
-        b = a + 2
-        c = a + 1
-        d = a + 3
-        idx.extend([a,b,c, b,d,c])
-    
-    # Lid cover
-    for i in range(major):
-        a = lid2_start + i * 2
-        b = a + 2
-        c = a + 1
-        d = a + 3
-        idx.extend([a,b,c, b,d,c])
-    
-    # Flush handle
-    idx.extend([handle_start, handle_start+1, handle_start+2, handle_start+1, handle_start+3, handle_start+2])
-    
-    # Base
-    for face in [[0,1,2,3], [4,7,6,5], [0,4,5,1], [2,6,7,3], [0,3,7,4], [1,5,6,2]]:
-        a = base_start + face[0]
-        b = base_start + face[1]
-        c = base_start + face[2]
-        d = base_start + face[3]
-        idx.extend([a,b,c, b,d,c])
-    
-    return v, n, u, idx
+    col = [0.78, 0.48, 0.12]
+    c = col * (len(v) // 3)
+    return v, n, u, c, idx
 
 
 def _donut(major, minor):
-    """Alias for torus (donut shape)"""
     return _torus(major, minor)
+
+
+def _load_toilet(major, minor):
+    """Load real OBJ toilet model, ignoring major/minor params"""
+    models_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
+    obj_path = os.path.join(models_dir, "toilet.obj")
+    if not os.path.exists(obj_path):
+        log.warning("Toilet OBJ not found at %s, falling back to torus", obj_path)
+        return _torus(major, minor)
+    v, n, u, c, idx = load_obj(obj_path)
+    if not v:
+        return _torus(major, minor)
+    return v, n, u, c, idx
 
 
 def _noise_tex(size):
@@ -400,7 +232,7 @@ def _rx(a):
 
 MODEL_GENERATORS = {
     "torus": _torus,
-    "toilet": _toilet,
+    "toilet": _load_toilet,
     "donut": _donut,
 }
 
@@ -472,15 +304,16 @@ class GLStressWidget(QOpenGLWidget):
             GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
             GL.glClearColor(0.03, 0.03, 0.05, 1.0)
 
-            verts, norms, uvs, idxs = self._model_gen(self._cfg["major"], self._cfg["minor"])
+            verts, norms, uvs, cols, idxs = self._model_gen(self._cfg["major"], self._cfg["minor"])
             self._index_count = len(idxs)
             nv = len(verts) // 3
-            stride = 8
+            stride = 11
             data = np.empty(nv * stride, dtype=np.float32)
             for i in range(nv):
                 data[i*stride+0: i*stride+3] = verts[i*3:i*3+3]
                 data[i*stride+3: i*stride+6] = norms[i*3:i*3+3]
                 data[i*stride+6: i*stride+8] = uvs[i*2:i*2+2]
+                data[i*stride+8: i*stride+11] = cols[i*3:i*3+3]
             idx_a = np.array(idxs, dtype=np.uint32)
 
             self._vao = GL.glGenVertexArrays(1)
@@ -499,6 +332,8 @@ class GLStressWidget(QOpenGLWidget):
             GL.glEnableVertexAttribArray(1)
             GL.glVertexAttribPointer(2, 2, GL.GL_FLOAT, GL.GL_FALSE, sb, GL.ctypes.c_void_p(24))
             GL.glEnableVertexAttribArray(2)
+            GL.glVertexAttribPointer(3, 3, GL.GL_FLOAT, GL.GL_FALSE, sb, GL.ctypes.c_void_p(32))
+            GL.glEnableVertexAttribArray(3)
 
             self._fur_prog = _link(V_SRC, F_SRC)
             self._base_prog = _link(B_V_SRC, B_F_SRC)
@@ -531,12 +366,10 @@ class GLStressWidget(QOpenGLWidget):
             mvp = _persp(45, aspect, 0.1, 10) @ _look([4.0, 2.5, 4.0], [0, 0, 0], [0, 1, 0]) @ _ry(rot) @ _rx(rot * 0.08)
             mvp_f = mvp.flatten()
             light = np.array([0.5, 0.7, 0.6], dtype=np.float32)
-            base_col = np.array([0.78, 0.48, 0.12], dtype=np.float32)
             shells = self._cfg["shells"]
 
             GL.glUseProgram(self._base_prog)
             GL.glUniformMatrix4fv(GL.glGetUniformLocation(self._base_prog, "u_mvp"), 1, GL.GL_FALSE, mvp_f)
-            GL.glUniform3fv(GL.glGetUniformLocation(self._base_prog, "u_color"), 1, base_col)
             GL.glUniform3fv(GL.glGetUniformLocation(self._base_prog, "u_light"), 1, light)
             GL.glUniform1f(GL.glGetUniformLocation(self._base_prog, "u_gloss"), 0.6)
             GL.glBindVertexArray(self._vao)
@@ -544,7 +377,6 @@ class GLStressWidget(QOpenGLWidget):
 
             GL.glUseProgram(self._fur_prog)
             GL.glUniformMatrix4fv(GL.glGetUniformLocation(self._fur_prog, "u_mvp"), 1, GL.GL_FALSE, mvp_f)
-            GL.glUniform3fv(GL.glGetUniformLocation(self._fur_prog, "u_color"), 1, base_col + 0.15)
             GL.glUniform3fv(GL.glGetUniformLocation(self._fur_prog, "u_light"), 1, light)
             GL.glUniform1f(GL.glGetUniformLocation(self._fur_prog, "u_shells"), float(shells))
             GL.glUniform1f(GL.glGetUniformLocation(self._fur_prog, "u_fur_len"), self._cfg["fur_len"])
